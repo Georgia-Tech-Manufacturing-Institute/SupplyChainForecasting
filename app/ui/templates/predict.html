@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Predict — Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">🎯</span> Predict
+</div>
+
+<div class="card">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th>Choose Model:</th>
+          <td>
+            <select name="model" style="max-width:260px;">
+              {% for m in models %}
+                <option value="{{ m }}"
+                  {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
+                  {{ m }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label">Prediction Target Date</th>
+          <td>
+            <input type="week" name="pred_date"
+                   value="{{ request.form.get('pred_date', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Max. Lookahead (weeks)</th>
+          <td>
+            <input type="number" name="order_horizon"
+                   min="1" max="52"
+                   value="{{ request.form.get('order_horizon', '24') }}"
+                   style="max-width:100px;" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Part Number</th>
+          <td>
+            <input type="text" name="part_number"
+                   placeholder="e.g. 10234  (leave blank for multi)"
+                   value="{{ request.form.get('part_number', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Waterfall Fill (multi)</th>
+          <td>
+            <label class="check-label">
+              <input type="checkbox" name="multi_mode"
+                {% if request.form.get('multi_mode') == 'on' %}checked{% endif %} />
+              Generate predictions with waterfall fill across all parts
+            </label>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Make Predictions</button>
+
+      {% if result %}
+        <div class="result-banner">
+          ✔ Report saved to<br/>
+          <span class="preview-path">{{ result }}</span>
+          <div class="xlsx-hint">📊 Excel file (.xlsx)</div>
+        </div>
+      {% elif error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

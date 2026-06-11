@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Retrain — Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">🔄</span> Retrain
+</div>
+
+<div class="card">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th colspan="2">Refresh the Model with More Recent Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label" colspan="2" style="background:var(--bg); font-size:12px; font-weight:400; color:var(--text-muted); padding:8px 16px;">
+            Prediction Index Range
+          </th>
+        </tr>
+        <tr>
+          <th class="row-label">Earliest Prediction Date</th>
+          <td>
+            <input type="date" name="earliest_pred_date"
+                   value="{{ request.form.get('earliest_pred_date', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Latest Prediction Date</th>
+          <td>
+            <input type="date" name="latest_pred_date"
+                   value="{{ request.form.get('latest_pred_date', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label" colspan="2" style="background:var(--bg); font-size:12px; font-weight:400; color:var(--text-muted); padding:8px 16px;">
+            Order Range
+          </th>
+        </tr>
+        <tr>
+          <th class="row-label">Earliest Order Date</th>
+          <td>
+            <input type="date" name="earliest_order_date"
+                   value="{{ request.form.get('earliest_order_date', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Latest Order Date</th>
+          <td>
+            <input type="date" name="latest_order_date"
+                   value="{{ request.form.get('latest_order_date', '') }}" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Retrain Model</button>
+
+      {% if result %}
+        <div class="result-banner">
+          ✔ New model saved to<br/>
+          <span class="preview-path">{{ result }}</span>
+          <div class="xlsx-hint">🧠 Model file (.pkl)</div>
+        </div>
+      {% elif error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<p style="margin-top:16px; font-size:13px; color:var(--text-muted);">
+  Training progress and estimated completion time will appear in the server console (stdout).
+</p>
+{% endblock %}

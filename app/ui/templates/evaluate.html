@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Evaluate — Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">📊</span> Evaluate
+</div>
+
+<div class="card">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th>Choose Model:</th>
+          <td>
+            <select name="model" style="max-width:260px;">
+              {% for m in models %}
+                <option value="{{ m }}"
+                  {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
+                  {{ m }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label">Evaluation Start Date</th>
+          <td>
+            <input type="date" name="eval_start"
+                   value="{{ request.form.get('eval_start', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Evaluation End Date</th>
+          <td>
+            <input type="date" name="eval_end"
+                   value="{{ request.form.get('eval_end', '') }}" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Evaluate</button>
+
+      {% if result %}
+        <div class="result-banner">
+          ✔ Evaluation saved to<br/>
+          <span class="preview-path">{{ result }}</span>
+          <div class="xlsx-hint">📊 Excel file (.xlsx)</div>
+        </div>
+      {% elif error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<p style="margin-top:16px; font-size:13px; color:var(--text-muted);">
+  Compares recent model predictions against actual customer order accuracy for the selected date range.
+</p>
+{% endblock %}

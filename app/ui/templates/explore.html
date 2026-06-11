@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Explore Data — Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">🔍</span> Explore Data
+</div>
+
+<div class="card">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th colspan="2">Explore Prior Weeks of Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label">Start Date</th>
+          <td>
+            <input type="date" name="week_start"
+                   value="{{ request.form.get('week_start', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">End Date</th>
+          <td>
+            <input type="date" name="week_end"
+                   value="{{ request.form.get('week_end', '') }}" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Explore</button>
+
+      {% if result %}
+        <div class="result-banner">
+          ✔ Report saved to<br/>
+          <span class="preview-path">{{ result }}</span>
+          <div class="xlsx-hint">📊 Excel file (.xlsx)</div>
+        </div>
+      {% elif error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

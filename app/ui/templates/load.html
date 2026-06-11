@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Load Data — Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">📥</span> Load Data
+</div>
+
+<div class="card">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th colspan="2">Add New Weeks of Data to the DB</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label">Source Folder</th>
+          <td>
+            <input type="file" name="folder_path"
+              webkitdirectory directory multiple>
+            <!-- <input type="file" name="folder_path"
+            accept=".prn" multiple> -->
+            <!-- <input type="text" name="folder_path"
+                   placeholder="/data/raw/incoming"
+                   value="{{ request.form.get('folder_path', '') }}" /> -->
+            <div style="margin-top:6px; font-size:12px; color:var(--text-muted);">
+              Folder containing <code>.prn</code> files to process
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Load Data</button>
+
+      {% if result %}
+        <span class="result-banner">✔ {{ result }}</span>
+      {% elif error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<!-- <p style="margin-top:16px; font-size:13px; color:var(--text-muted);">
+  <strong>Note:</strong> Placing <code>.prn</code> files in the watched folder will also trigger
+  automatic processing. Use this button to trigger the pipeline manually.
+</p> -->
+{% endblock %}
