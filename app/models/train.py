@@ -1,191 +1,135 @@
-import pandas as pd
-import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor, HistGradientBoostingRegressor
 from sklearn.metrics import mean_pinball_loss, mean_squared_error, r2_score
 
-all_models = {}
+import pandas as pd 
+import numpy as np 
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+from app.prefixe import pre
 
-from sklearn.base import BaseEstimator, TransformerMixin
+def transform_target(y, objective):
+    if objective == 'raw':
+        return y, None
+    elif objective == 'log':
+        return np.sign(y) * np.log1p(np.abs(y)), None
+    elif objective == 'sqrt':
+        return np.sign(y) * np.sqrt(np.abs(y)), None
+    raise ValueError(f"Unknown objective: {objective}")
 
-import pandas as pd
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
+def inverse_transform_target(y_pred, objective, thresh=10):
+    if objective == 'raw':
+        return y_pred
+    elif objective == 'log':
+        return np.sign(y_pred) * np.expm1(np.abs(y_pred))
+    elif objective == 'sqrt':
+        return np.sign(y_pred) * (np.abs(y_pred) ** 2)
+    raise ValueError(f"Unknown objective: {objective}")
 
+def score_block(actual, predicted, label, week, records):
+    """Append r2/mae/mse for one prediction block."""
+    records.append({
+        "model": label,
+        "week":  week,
+        "n":     len(actual),
+        "r2":    r2_score(actual, predicted),
+        "mae":   np.abs(actual - predicted).mean(),
+        "mse":   mean_squared_error(actual, predicted),
+    })
 
-# Utility functions
-
-def _expanding_stats(
-    df: pd.DataFrame,
-    group_cols: list[str]=['Part'],
-    value_col: str='PredQty',
-    sort_col: str='RelDate',
-    prefix: str='',
-) -> pd.DataFrame:
-    """
-    For each row, compute expanding statistics over *strictly prior* rows
-    within each group (no data leakage: excludes current observation).
-    Returns a frame aligned to df's index with columns:
-        {prefix}_mean, {prefix}_std, {prefix}_min, {prefix}_max,
-        {prefix}_count, {prefix}_cv
-    """
-    df = df.sort_values(group_cols + [sort_col])
-    grp = df.groupby(group_cols)[value_col]
-
-    # shift(1) ensures the current row is excluded
-    stats = pd.DataFrame(index=df.index)
-    shifted = grp.shift(1)                       # prior value (for count ref)
-
-    # Expanding on the shifted series gives "all prior values"
-    exp = grp.transform(
-        lambda s: s.shift(1).expanding().mean()
-    ).rename(f"{prefix}_mean")
-
-    stats[f"{prefix}_mean"]  = grp.transform(lambda s: s.shift(1).expanding().mean())
-    stats[f"{prefix}_std"]   = grp.transform(lambda s: s.shift(1).expanding().std())
-    stats[f"{prefix}_min"]   = grp.transform(lambda s: s.shift(1).expanding().min())
-    stats[f"{prefix}_max"]   = grp.transform(lambda s: s.shift(1).expanding().max())
-    stats[f"{prefix}_count"] = grp.transform(lambda s: s.shift(1).expanding().count())
-    stats[f"{prefix}_cv"]    = (
-        stats[f"{prefix}_std"] / stats[f"{prefix}_mean"].replace(0, np.nan)
-    )
-    return stats
-
-
-def rolling_column(df, wks=2, func='sum', **kwargs):
-    return df.rolling(wks, closed='left', **kwargs).aggregate(func).reset_index(level=-1,drop=True)
-
-def roll_statistics(frame, target_col, group_col='Part', n=3, 
-                    func=['mean','std'], colnickname='', 
-                    **kwargs):
-    if isinstance(func,str):
-        func = [func]
-    grouped = frame.groupby(group_col)[target_col]
-    if colnickname != '' and isinstance(colnickname, str):
-        col = colnickname
-    else:
-        col = target_col
-    for f in func:
-        frame[f'roll_{col}_{f}_{n}'] = rolling_column(grouped,  wks=n, 
-                                                      func=f, **kwargs).reset_index()[target_col]
-    return frame
-
-
-def location_stats(frame):
-    '''
-    Assumes columns PredQty and numerical columns with location
-    '''
-    df = frame.copy()
-    loc_cols = [col for col in df.columns if not str(col).replace('.', '', 1).isdigit() ]
-    
+def create_target(df, qty_cols):
     pass
 
-def prior_prediction_features(frame):
-    ''' 
-    Time series features based on N weeks of prior predictions
-    Only requries waterfall data
+pq = pre['pq']
+oi = pre['oi']
+oq = pre['oq']
+
+def model_train(df: pd.DataFrame, holdout_weeks: int=-1,
+                config: dict={'obj': 'log', 
+                              'loss': 'absolute_error', 
+                              'l2': 1.0}):
     '''
-    df = frame.copy()
-    df['Lookahead'] = df.Orderidx - df.Predidx
-    # # For a unique part/order date, give the order in which predictions came. 
-    df["Pred_CumCount"] = df.groupby(["Part", "Orderidx"]).cumcount()
-    df['RelQty_lag_1wk'] = df.groupby("Part").shift(1).PredQty
-    df['RelQty_lag_2wk'] = df.groupby("Part").shift(2).PredQty
-    df = roll_statistics(df, target_col='PredQty', n=2, func=['sum'])
-    df = roll_statistics(df, target_col='PredQty', n=3, func=['sum'])
-    df["PredQty_diff_1wk"] = df.groupby(["Part", "Orderidx"])["PredQty"].diff()
+    if holdout_weeks is -1; use all data to train
+    if holdout_weeks given as integer, holdout the last holdout_weeks weeks to give model validation
+    '''
 
+    obj    = config['obj']
+    loss   = config['loss']
+    L2     = config['l2']
+    N      = 1
 
-def prior_consumption_features(cf):
-    newcf = cf[["Part", "Orderidx", "OrderQty"]].copy()
-    for i in range(3,7):
-        newcf = roll_statistics(newcf, target_col='OrderQty', n=i, func=['mean', 'std'])
-        df = roll_statistics(df, target_col='PredQty', n=i, func=['mean', 'std'])
-    newcf['OrderQty_lag_1wk'] = newcf.groupby("Part").shift(1).OrderQty
-    newcf['OrderQty_lag_2wk'] = newcf.groupby("Part").shift(2).OrderQty
-    # Difference from prior order
-    newcf['Orderidx_diff_1wk'] = newcf.groupby("Part").Orderidx.diff()
-    newcf['Orderidx_diff_2wk'] = newcf.groupby("Part").Orderidx.diff(2)
+    results_df = []
+    split_week = df[oi].max() - holdout_weeks
 
+    df = df.sort_values(["part", oi]).copy()
+    df['Volume'] = df[pq]*df.Amt1
 
+    train_mask = df[pre['oi']] < split_week
+    test_mask  = df[pre['oi']] >= split_week
 
-def time_series_features(frame, cf):
-    # Prior order
+    target   = (df[oq] - df[pq]) * df.Amt1
+    baseline = np.zeros_like(df[pq]  * df.Amt1)
 
+    y, thresh = transform_target(target, objective=obj)
+    X = df.drop(columns=[oq, 'Part'])
+    X.columns = [str(c) for c in X.columns]
 
-    # Features joined based on prediction date (ie prediction only "knows" info from the time of prediction.)
-    test_merge = df.merge(newcf.drop("OrderQty",
-                                    axis=1).rename({"Orderidx":"Predidx"},axis=1), 
-                    on=["Part", "Predidx"],   how='left')
-    # Merge consumption features onto DF
-    df = pd.concat([df, 
-                    test_merge.iloc[:, (len(df.columns)-len(test_merge.columns)):]], 
-                    axis=1)
-    # col_groups['Past_consum'] = set(df.columns) - set(all_col)
-    # all_col = df.columns
-    pre_lookat = df.copy()
+    valid     = ~y.isna()
+    X_valid   = X[valid]
+    y_valid   = y[valid]
+    df_valid  = df[valid]
+    train_idx = train_mask[valid]
+    test_idx  = test_mask[valid]
 
-    # Get statistics based on the 
-    for i in sorted(df.Predidx.unique()):
-        # Assume "present" is week i
-        # Iterate through each week and update with past accuracy diagnostics
-        currentweek = df.Predidx==i # Current prediction week 
-        prior_data = df[df.Orderidx < i][['Part', 'Predidx', 'Orderidx', 
-                                        'RelDate', 'OrderQty', 'PredQty', 
-                                        "Lookahead"]] # Update current prediction week
-        # Same part N week accuracy
-        prior_data['Acc'] = prior_data.OrderQty - prior_data.PredQty
-        # per-part agg accuracy 
-        all_past_agg_accuracy = prior_data.groupby("Part").Acc.mean()
-        prior_part_order_accuracy = prior_data.groupby("Part").Acc.last() # behaves as nth(-1)
-        # past per-part release accuracy
-        release_gp = prior_data.groupby(["Part", "RelDate"]).Acc
-        release_accuracy = pd.concat([
-            release_gp.mean().rename("Part_Rel_Mean_Acc"),
-            release_gp.std().rename("Part_Rel_Std_Acc")
-        ], axis=1).reset_index()
-        #cats = []
-        cats = [all_past_agg_accuracy.rename("All_Part_Mean_Acc"),
-            prior_part_order_accuracy.rename("Last_Order_Part_Mean_Acc"),]
-        # Rolling
-        for lookback in range(1, 6):
-            recent_history = prior_data[prior_data.Lookahead<=lookback]
-            cats.append(recent_history.groupby("Part").Acc.mean().rename(f"roll_Part_mean_Acc_LB{lookback}"))
-            cats.append(recent_history.groupby("Part").Acc.std().rename(f"roll_Part_std_Acc_LB{lookback}"))
+    X_train, y_train = X_valid[train_idx], y_valid[train_idx]
+    X_test,  y_test  = X_valid[test_idx],  y_valid[test_idx]
 
-        part_acc = pd.concat(cats, axis=1)
-        
-        if len(part_acc) > 0:
-            local_hist_features = release_accuracy.reset_index(drop=True).merge(part_acc, how='inner', on='Part')
-            newcols = local_hist_features.columns.difference(['Part','RelDate'])
-            df.loc[currentweek, newcols] = (
-                pre_lookat.loc[currentweek]
-                .merge(local_hist_features, on=['Part','RelDate'], how='left')
-                .set_index(df.loc[currentweek].index) [newcols]
-            )
+    baseline_qty = (df_valid[pq])[test_idx]
+    baseline_test = (df_valid[pq] * df_valid.Amt1)[test_idx]
+    pred_qty_test =  df_valid[pq][test_idx]
+    pred_amt_test =  df_valid.Amt1[test_idx]
 
-    # col_groups['Past_Acc'] = set(df.columns) - set(all_col)
-    # all_col = df.columns
+    # ── boolean masks for the two splits ──────────────────────────────────────
+    mask_lo = (pred_qty_test.values <= N)  
+    mask_hi = ~mask_lo  
 
-    # Part -> column per digit, plus indicators for L/M  
-    df = df.dropna(subset=['Part'], axis=0)
-    normal_pn = df.Part.str.len()==8
-    part_no_cols = [f'pn{i}' for  i in range(8)]
-    df.loc[normal_pn, part_no_cols] = df.Part[normal_pn].str.split('',expand=True).iloc[:,1:9].astype(int)
-    df.loc[:, part_no_cols] = df.loc[:, part_no_cols].fillna(0)
-    df.loc[df.Part.str.startswith('L'), 'L'] = 1
-    df.loc[df.Part.str.startswith('M'), 'M'] = 1
-    df.loc[:, ['L', 'M']] = df.loc[:, ['L', 'M']].fillna(0)
-    # col_groups['PN'] = set(df.columns) - set(all_col)
-    # all_col = df.columns
+    # ── Model A: trained & evaluated only on PredQty > N rows ─────────────────
+    train_hi = train_idx & (df_valid[pq] > N)
+    X_tr_A, y_tr_A = X_valid[train_hi], y_valid[train_hi]
 
-    # Date features - month, day of year, day of week, ordinal date
-    df['ReleaseMonth'] = df.RelDate.dt.month
-    df['ReleaseDay'] = df.RelDate.dt.day_of_year
-    df['ReleaseWD'] = df.RelDate.dt.day_of_week
-    #df['ReleaseOrd'] = df.RelDate.rank(method='dense').astype(int)
-    # col_groups['Date_Features'] = set(df.columns) - set(all_col)
-    # all_col = df.columns
-    df = df.drop("RelDate", axis=1)
+    mA = HistGradientBoostingRegressor(loss=loss, l2_regularization=L2)
+    mA.fit(X_tr_A, y_tr_A,
+           sample_weight=1 / (X_tr_A.Lookahead + 2))
 
-    return df
+    # ── Model B: trained & evaluated only on PredQty <= N rows ────────────────
+    train_lo = train_idx & (df_valid[pq] <= N)
+    X_tr_B, y_tr_B = X_valid[train_lo], y_valid[train_lo]
+
+    mB = HistGradientBoostingRegressor(loss=loss, l2_regularization=L2)
+    mB.fit(X_tr_B, y_tr_B,
+           sample_weight=1 / (X_tr_B.Lookahead + 2))
+
+    # ── predict on test split ─────────────────────────────────────────────────
+    preds_A_raw = inverse_transform_target(mA.predict(X_test[mask_hi]), objective=obj)
+    preds_B_raw = inverse_transform_target(mB.predict(X_test[mask_lo]), objective=obj)
+
+    y_test_raw = inverse_transform_target(y_test.values, objective=obj)
+
+    preds_combined = np.empty(len(X_test))
+    preds_combined[mask_hi] = preds_A_raw
+    preds_combined[mask_lo] = preds_B_raw
+    predQty_combined = np.round(preds_combined/pred_amt_test)
+
+    return predQty_combined
+    # ── score every reporting slice ───────────────────────────────────────────
+    score_block(y_test_raw, preds_combined,
+                "Combined (A+B): all", split_week, results_df)
+    score_block(y_test_raw[mask_hi],  preds_A_raw,
+                f"Model A: PredQty>{N}",split_week, results_df)
+    score_block(y_test_raw[mask_lo], preds_B_raw,
+                f"Model B: PredQty<={N}",split_week, results_df)
+    score_block(y_test_raw[mask_hi],  baseline_test.values[mask_hi],
+                f"Naive: PredQty>{N}",split_week, results_df)
+    score_block(y_test_raw[mask_lo], baseline_test.values[mask_lo],
+                f"Naive: PredQty<={N}",split_week, results_df)
+    score_block(y_test_raw, baseline_test.values,
+                "Naive: all", split_week, results_df)
+

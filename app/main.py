@@ -1,5 +1,5 @@
 # main.py
-from core.parser import *
+from app.core.parser import *
 
 def main(waterfall_path:str,
         consumption_path:str, 

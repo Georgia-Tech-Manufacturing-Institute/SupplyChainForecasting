@@ -1,5 +1,6 @@
 from app.core.loader import *
 from app.reporting.core import *
+from app.prefixe import pre, dirs
 
 def filter_dates(df, min_date:datetime, max_date:datetime):
     pass
@@ -24,22 +25,22 @@ def build_bins(b):
     bins = np.array(bins).round(2)
     return bins
 
-def errorReport(filtered, save_loc: Path='',  max_lookahead=None, since_idx=None, until_idx=None):
-    latest = filtered.loc[ filtered.groupby(['Part', 'Predidx', 'Orderidx'])['RelDate'].idxmax()]
-    latest['lookahead'] = latest.Orderidx - latest.Predidx
-    latest['error'] = (latest.OrderQty - latest.PredQty)
+def errorReport(filtered, save_loc: Path='',  max_lookahead=None, since_idx=None, until_idx=None, render=False):
+    latest = filtered.loc[ filtered.groupby(['part', pre['pi'], pre['oi']])[pre['rd']].idxmax()]
+    latest['lookahead'] = latest[pre['oi']] - latest[pre['pi']]
+    latest['error'] = (latest[pre['oq']] - latest[pre['pq']])
 
     # Field filtering
     if max_lookahead:
         latest = latest.loc[latest.lookahead <= max_lookahead]
     if since_idx:
-        latest = latest.loc[latest.Orderidx >= since_idx]
+        latest = latest.loc[latest[pre['oi']] >= since_idx]
     if until_idx:
-        latest = latest.loc[latest.Orderidx <= until_idx]
+        latest = latest.loc[latest[pre['oi']] <= until_idx]
 
     latest.loc[latest.error == 0, 'Pct'] = 0
-    latest.loc[latest.error > 0, 'Pct'] = latest.error/latest.OrderQty # Consumption > Predcition
-    latest.loc[latest.error<0, 'Pct'] = latest.error/latest.PredQty
+    latest.loc[latest.error > 0, 'Pct'] = latest.error/latest[pre['oq']] # Consumption > Predcition
+    latest.loc[latest.error<0, 'Pct'] = latest.error/latest[pre['pq']]
 
     bins = build_bins(0.1) # bin width 
 
@@ -52,60 +53,29 @@ def errorReport(filtered, save_loc: Path='',  max_lookahead=None, since_idx=None
     pct_report = report.div(report.sum(axis=1),axis=0).round(2)
 
     if save_loc.exists():
-        min_date = latest.Orderidx.min()
-        max_date = latest.Orderidx.max()
+        min_date = latest[pre['oi']].min()
+        max_date = latest[pre['oi']].max()
         minyr, minwk = idx_to_week(min_date)
         maxyr, maxwk = idx_to_week(max_date)
         daterange = f"{minyr}Wk{minwk:02d} - {maxyr}Wk{maxwk:02d}"
         report.to_excel(save_loc / f'OrderAccuracy_{daterange}.xlsx')
-        pct_report.to_excel(save_loc / f'OrderAccuracy_Pct_{daterange}.xlsx')
-    print("Saved to ", save_loc)
+        pct_report.to_excel(save_loc / f'OrderAccuracy_Pct_{daterange}.xlsx') 
+        print("Saved to ", save_loc)
+    if render:
+        return pct_report
 
 
 def main():
-    pd.set_option('future.no_silent_downcasting', True)
+    filter_nans = True
+    conn = sqlite3.connect(dirs['sql'])
 
-    #parent_dir = Path(__file__).resolve().parent
-    parent_dir = Path.cwd()
-    data = parent_dir / 'app' / 'data'
+    hist_wf = filter_SQL(conn, table='waterfall') # with releases/dates
+    wf = filter_SQL(conn, table='waterfall_agg') # prediction-wise rows  
+    cf = filter_SQL(conn, table='consumption') # 
 
-    raw_dir = data / 'raw'
-    waterfall_dir =  raw_dir/ 'Waterfall'
-    consump_dir = raw_dir /  'Consumption'
-    proc_dir = data /  "Processed"
-    proc_cost = proc_dir / 'Cost.parquet'
-    cost_map = pd.read_parquet(proc_cost)
+    conn.close() 
 
-
-    proc_consum = proc_dir / 'Consumption'
-    consumption = all_consumption_load(proc_consum)
-
-    proc_wf = proc_dir / 'Waterfall'
-    minidx, maxidx = consumption.Orderidx.min(), consumption.Orderidx.max()
-    earliest_prediction = week_to_idx(2024, 18)
-    latest_prediction = week_to_idx(2026,10)
-    earliest_order = consumption.Orderidx.min()
-    latest_order = consumption.Orderidx.max()
-
-    wf = load_waterfall_span(earliest_prediction, 
-                            latest_prediction,
-                            proc_wf)
-    wf = wf[[col for col in wf.columns if not str(col).replace('.', '', 1).isdigit() ]]
-    wf = wf[(wf.Orderidx<=latest_order)&(wf.Orderidx>=earliest_order)]
-
-    consumption = consumption[consumption.Orderidx<=latest_order]
-    wf, consumption = filter_disjoint(wf, consumption)
-    joint = wf.merge(consumption, on=["Part", 'Orderidx'], how="outer")
-    # Filter out instances where PredQty is never non-NaN; ie consumed parts that are not waterfall parts. 
-    filtered = joint.groupby('Part').filter(lambda g: g['PredQty'].notna().any())
-    filtered.Quantity1 = filtered.Quantity1.fillna(0)
-    filtered.rename({"Quantity1":"OrderQty"}, axis=1, inplace=True)
-    consumption.rename({"Quantity1":"OrderQty"}, axis=1, inplace=True)
-
-    filtered.PredQty = filtered.PredQty.fillna(0)
-
-    #report.to_csv(parent_dir / 'HistoryReport.csv')
-    errorReport(filtered, save_loc=Path(Path.cwd() /'reports'))
+    #errorReport(filtered, save_loc=Path(Path.cwd() /'reports'))
 
 
 if __name__ == '__main__':

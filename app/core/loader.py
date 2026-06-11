@@ -1,16 +1,79 @@
+from fileinput import filename
 import os
-from pathlib import Path
 from app.core.parser import *
 import pandas as pd
-from typing import NamedTuple
+from datetime import date
+from app.prefixe import pre, dirs
+import sqlite3
 
-class ColumnMeta(NamedTuple):
-    """Semantic unit tag for a group of feature columns."""
-    week_cols:     list[str]   # dimensioned in weeks (lead time, lag, horizon …)
-    qty_cols:      list[str]   # dimensioned in SKU units (qty, mean, std …)
-    ratio_cols:    list[str]   # dimensionless ratios / proportions  [0-1 or ±]
-    count_cols:    list[str]   # raw counts / cardinalities
-    flag_cols:     list[str]   # binary indicators
+
+def read_waterfall_week(year=None, week=None, idx=None, proc_dir=Path('data/processed/Waterfall')):
+    '''
+    Loads a single week (Predidx) of processed waterfall data; uses year and week, otherwise uses idx
+    '''
+    if year is None or week is None:
+        if idx is None:
+            raise ValueError("Must provide either year and week, or idx")
+        year, week = idx_to_week(idx)
+    filename = f"{year}wk{week:02d}.parquet"
+    filepath = proc_dir / filename
+    if not filepath.exists():
+        return None
+    return pd.read_parquet(filepath)
+
+def read_waterfall_span(idx_start=None, idx_end=None, proc_dir=Path('data/processed/Waterfall')):
+    ''' Loads a span of processed waterfall data based on prediction week (Predidx) ; 
+        week is INCLUSIVE'''
+    data = []
+    for idx in range(idx_start, idx_end+1):
+        yr, wk = idx_to_week(idx) 
+        week_data = read_waterfall_week(year=yr, week=wk, proc_dir=proc_dir)
+        if week_data is not None:
+            data.append(week_data)
+    wf = pd.concat(data, ignore_index=True)
+    #wf = wf.drop_duplicates(subset=['Part', 'RelDate', 'Orderidx'])
+    return wf
+
+
+def filter_SQL(conn, idx_start=None, idx_end=None, table='waterfall'):        
+    start_cond = f'predidx >= {idx_start}' if idx_start is not None else None
+    end_cond = f'predidx <= {idx_end}' if idx_end is not None else None
+    if start_cond or end_cond:
+        where_clause = "WHERE " + " AND ".join(filter(None, [start_cond, end_cond]))
+    else: 
+        where_clause = ""
+    query = f"SELECT * FROM {table} {where_clause}"
+    return pd.read_sql_query(query, conn)
+
+
+def check_table_row_totals(cursor,t):
+    cursor.execute(f'SELECT COUNT(1) FROM "{t}";')
+    return cursor.fetchone()
+
+def list_all_tables_row_totals(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = cursor.fetchall()
+    for t in tables:
+        print(t[0], check_table_row_totals(cursor, t=t[0]))
+
+def list_column_names(cursor, table):
+    cursor.execute(f"PRAGMA table_info({table})")
+    columns = [row[1] for row in cursor.fetchall()]
+    return columns
+
+accepted_types = {'prn', 'txt'}
+def parse_file_convention(filename, pattern=r'(\d+)wk(\d{2})'):
+    pattern = re.compile(pattern,re.IGNORECASE)
+    m = re.search(pattern, filename)
+    if m:
+        yr, wk = m.group(1), m.group(2)
+        return yr, wk
+    else:
+        raise ValueError("Filename does not match expected pattern")
+
+def validate_type(file):
+    return any(str(file).endswith(at) for at in accepted_types)
 
 def filter_disjoint(wf, consumption):
     # Filter out disjoint set of parts
@@ -18,160 +81,200 @@ def filter_disjoint(wf, consumption):
     # that is, if a corresponding prediction is missing, its due to bad broadcasting
     # Should be used on big representative datasets 
     disjoint = pd.Index(wf.Part).symmetric_difference(pd.Index(consumption.Part))
-    wf = wf[~wf.Part.isin(disjoint)]
-    consumption = consumption[~consumption.Part.isin(disjoint)]
+    wf = wf[~wf.Part.isin(disjoint)].reset_index(drop=True)
+    consumption = consumption[~consumption.Part.isin(disjoint)].reset_index(drop=True)
     return wf, consumption
 
-
-def all_consumption_load(consum_dir):
-    '''Bulk '''
-    consum = []
-    for year in os.listdir(consum_dir):
-        year_dir  = consum_dir / year
-        for week_file  in os.listdir(year_dir):
-            path = year_dir / week_file
-            if str(path).endswith('.parquet'):
-                consum_data = pd.read_parquet(path)
-                consum.append(consum_data)
-    consum = pd.concat(consum, ignore_index=True)
-    return consum
-
-def bulk_consumption_parse(consump_dir,   proc_consump_dir, 
-                           overwrite=False):
-    '''
-    Bulk loads data from raw -> processed. Loads data from allof /data/raw/Consumption into 
-    Assumes structure of 
-    /data/raw/Consumption/
-        /year/ 
-            -%ywk%w.prn
-            -e.g. 25wk01.prn
-        /year/ ... 
-    '''
+def consumption_to_sql(conn, consump_dir, overwrite=False):
+    # Todo check for file duplication based on loaded_files table
     consump_dir = Path(consump_dir)
-    proc_consump_dir = Path(proc_consump_dir)
-    proc_consump_dir.mkdir(parents=True, exist_ok=True)
+    loaded = get_loaded_files(conn, filter_type='consumption')
 
-    for consump_year in sorted(os.listdir(consump_dir)):
-        year_input_dir = consump_dir / consump_year
-        year_output_dir = proc_consump_dir / consump_year
-        year_output_dir.mkdir(parents=True, exist_ok=True)
+    for filename in sorted(os.listdir(consump_dir)):    
+        if not validate_type(filename): 
+            print("     Skipping ", {filename}, " due to invalid data type")
+            continue
+        if (filename in list(loaded.filename)):
+            print("     Skipping ", filename, " identical copy processed; suppress this behavior by setting overwrite=True")
+            if not overwrite:
+                continue
+        try:
+            year, week = parse_file_convention(filename)
+        except ValueError as e:
+            print("     Skipping ", filename)
+            print("          ", e)
+            continue
+        idx = week_to_idx(year, week)
+        if idx in list(loaded.week_idx):
+            print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
+            continue        
+        
+        input_path = consump_dir / filename
+        if validate_type(input_path):
+            yr, wk = parse_file_convention(filename)
+            test = consumpParse(input_path, year=yr, week=wk,
+                                cols= ["Site", "Item Number", "Description", "UM",
+                                        "Type", "Type1", "Quantity1", "Type2", "Quantity2"])
+            print("     Processing: ", filename, f' as Yr{yr}Wk{wk}')
+            filt = filter_partno(test, col='Part')
+            if len(filt)>0:
+                filt = filt.groupby(['Part', pre['oi']]).sum(numeric_only=True).reset_index()
+                filt = filt.rename({'Quantity1': pre['oq']}, axis=1    )
+                d_rows = load_to_sql(conn, 'consumption', filt)
+                print(f"          Changed {d_rows} rows")
+                widx = week_to_idx(yr, wk)
+                update_loaded_files(conn, filename, 'consumption', widx)
 
-        if consump_year.startswith('2'):
-            for file in sorted(os.listdir(year_input_dir)):
-                input_path = year_input_dir / file
+def get_loaded_files(conn, filter_type=None):
+    loaded = filter_SQL(conn, table='loaded_files')
+    if filter_type:
+        loaded = loaded[loaded['data_type']==filter_type]
+    return loaded
 
-                pattern = re.compile( r'(?:\d+wk|Wk_)(\d+)',re.IGNORECASE)
-                test = consumpParse(input_path,
-                                    name_pattern= pattern, year=consump_year,
-                                    cols= ["Site", "Item Number", "Description", "UM","Type", "Type1", "Quantity1", "Type2", "Quantity2"])
-                yr, wk = idx_to_week(test.Orderidx[0])
-                parquet_name = f"{int(yr)}_Wk_{wk:02d}.parquet"
-                output_path = year_output_dir / parquet_name
-
-                if output_path.exists() and not overwrite:
-                    print(f"Skipping existing: {output_path}")
-                    continue
-
-                filt = filter_partno(test, col='Part')
-                filt = filt.groupby(['Part', 'Orderidx']).sum(numeric_only=True).reset_index()
-                filt.to_parquet(output_path, index=False)
-
-def load_waterfall_week(year=None, week=None, idx=None, proc_dir=Path('data/processed/Waterfall')):
+def waterfall_to_sql(conn, waterfall_dir, overwrite=False):
     '''
-    Loads a single week of processed waterfall data; uses year and week, otherwise uses idx
-    '''
-    if year is None or week is None:
-        if idx is None:
-            raise ValueError("Must provide either year and week, or idx")
-        year, week = idx_to_week(idx)
-    filename = f"{year}_Wk_{week:02d}.parquet"
-    filepath = proc_dir / str(year) / filename
-    if not filepath.exists():
-        #print(f"File {filepath} does not exist.")
-        return None
-    return pd.read_parquet(filepath)
-
-def load_waterfall_span(idx_start, idx_end, proc_dir=Path('data/processed/Waterfall')):
-    ''' Loads a span of processed waterfall data ; 
-        week is INCLUSIVE'''
-    data = []
-    for idx in range(idx_start, idx_end+1):
-        yr, wk = idx_to_week(idx) 
-        week_data = load_waterfall_week(year=yr, week=wk, proc_dir=proc_dir)
-        if week_data is not None:
-            data.append(week_data)
-    wf = pd.concat(data, ignore_index=True)
-    wf = wf.drop_duplicates(subset=['Part', 'RelDate', 'Orderidx'])
-    return wf
-
-def bulk_waterfall_parse(waterfall_dir,
-                   wf_proc_dir,
-                   overwrite=False):
-    '''
-    Loads raw waterfall data into processed 
-    Assumes structure of: 
-    /data/
-    -/raw/
-    --/2025/
-    ---/25wk06.prn
-    ---/25wk07.prn
-    --/2026/
-    -/processed/
+    Loads raw waterfall data into processed table; naming convention 2025wk06
+    skips rows that are not unique
+    Todo check for file duplication based on loaded_files table
     '''
     print("Bulk waterfall processing: ")
-    for wf_year in sorted(os.listdir(waterfall_dir)):
-            if wf_year.startswith("2"): # process whole year
-                print("     Processing ", wf_year)
-                year_input_dir = waterfall_dir / wf_year
-                year_output_dir = wf_proc_dir / wf_year
-                year_output_dir.mkdir(parents=True, exist_ok=True)
+    # Pull the 
+    loaded = get_loaded_files(conn, filter_type='waterfall')
 
-                for filename in sorted(os.listdir(year_input_dir)):
-                    input_path = year_input_dir / filename
-                    pattern = re.compile( r'(?:\d+wk)(\d+)',re.IGNORECASE)
-                    m = re.search(pattern, filename)
-                    week = int(m.group(1))
-                    parquet_name = f"{int(wf_year)}_Wk_{week:02d}.parquet"
-                    output_path = year_output_dir / parquet_name
+    for filename in sorted(os.listdir(waterfall_dir)):    
+        if not validate_type(filename): 
+            print("     Skipping ", {filename}, " due to invalid data type")
+            continue
+        if (filename in list(loaded.filename)):
+            print("     Skipping ", filename, " identical copy processed; suppress this behavior by setting overwrite=True")
+            if not overwrite:
+                continue
+        try:
+            year, week = parse_file_convention(filename)
+        except ValueError as e:
+            print("     Skipping ", filename)
+            print("          ", e)
+            continue
+        idx = week_to_idx(year, week)
+        if idx in list(loaded.week_idx):
+            print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
+            continue
 
-                    if output_path.exists() and not overwrite:
-                        print(f"             Skipping existing: {filename}")
-                        continue
-                    print("             Parsing ", filename)
-                    parsed = waterfallParse(input_path)
-                    wf = waterfallProcess(parsed)
-                    part_pivot = shippingMelt(wf)
-                    # Only use this in the case where there is no usable data befroe a certain point (in this case,
-                    # we only have order data after week 41 of 2024, so any orders cant be validated)
-                    #newdata = part_pivot[(wepart_pivotekdata.Orderidx - 2024*52)>=41]
+        input_path = waterfall_dir / filename
+        print("     Parsing ", filename)
+        parsed = waterfallParse(input_path)
+        wf = waterfallProcess(parsed)
+        wf["RelDate"] = wf["RelDate"].astype(str)
+        d_rows = load_to_sql(conn, 'waterfall', 
+                                wf.rename({pre['pq']: 'qty'}, axis=1))
+        print(f"          Changed {d_rows} rows in waterfall")
+        wf_agg = wf.groupby(['Part', pre['oi'], pre['pi']], 
+                            as_index=True).agg({pre['pq']: 'sum',
+                                                'PCR':'sum'}).reset_index()
+        widx = week_to_idx(year, week)
+        update_loaded_files(conn, filename, 'waterfall', widx)
+        d_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
+        print(f"          Changed {d_rows} rows in waterfall_agg")
 
-                    part_pivot.to_parquet(output_path, index=False)
+def cost_to_sql(conn, cost_map):
+    load_to_sql(conn, 'cost', cost_map) 
+
+def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
+    ''' keeps log of week info for loaded files
+    conn: sqlite3 connection
+    week: week index of file loaded based on week predictions/consumption is given
+    ftype: waterfall or consumption '''
+    if ftype not in ['waterfall', 'consumption']:
+        raise ValueError('Please give ftype as waterfall or consumption')
+    if not isinstance(widx, int):
+        widx = int(widx)
+    conn.execute(
+    f""" INSERT OR {conflict} INTO loaded_files
+        (filename, data_type, week_idx, load_date) VALUES (?, ?, ?, ?)""",
+    (filename, ftype, widx, str(date.today().isoformat()), ))
+
+
+def cost_to_sql(conn, cost_dir):
+    cost_map = costPrep(cost_dir)
+    cost_map = cost_map.rename({'Amt1':'Amount'}, axis=1)
+    cost_map.Start = cost_map.Start.astype(str)
+    load_to_sql(conn, 'cost', cost_map)
+
+def load_to_sql(conn, table, df):
+    cur = conn.cursor()
+    columns = [c.lower() for c in df.columns]
+    sql = f"INSERT OR IGNORE INTO {table} ({','.join(columns)}) VALUES ({"?,"*(len(columns)-1) + "?" })"
+    before = conn.total_changes
+    cur.executemany(sql, df.itertuples(index=False, name=None))
+    conn.commit()
+    inserted = conn.total_changes - before
+    return inserted
+
+
+def sql_setup(conn):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS waterfall (
+        part TEXT,
+        orderidx INT,
+        reldate DATE,
+        shipto TEXT,
+        predidx INT, 
+        qty INT,
+        pcr INT,
+        UNIQUE(part, orderidx, reldate, shipto)
+    );  """) 
+    conn.commit()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS consumption (
+        part TEXT,
+        orderidx INT,
+        orderqty INT,
+        UNIQUE(part, orderidx)
+    );  """) 
+    conn.commit()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS cost (
+        part TEXT,
+        amount REAL,
+        start DATE, 
+        UNIQUE(part, start)
+    );   """) 
+    conn.commit()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS waterfall_agg (
+        part TEXT,
+        orderidx INT,
+        predidx INT, 
+        predqty INT,
+        pcr INT,
+        UNIQUE(part, orderidx, predidx)
+    );  """)
+    conn.commit()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS loaded_files (
+        filename TEXT,
+        data_type TEXT,
+        week_idx INT, 
+        load_date date,
+        UNIQUE(data_type, week_idx)
+    ); """)
+    conn.commit()
+
 
 def main():
-    pd.set_option('future.no_silent_downcasting', True)
+    conn = sqlite3.connect(dirs['sql'])
+    waterfall_to_sql(conn, waterfall_dir=dirs['raw']/'Waterfall')
+    consumption_to_sql(conn,  consump_dir=dirs['raw']/'Consumption')
 
-    parent_dir = Path(__file__).resolve().parent.parent
+    ## Push data from raw / cost.txt to sql 
+    cost_to_sql(conn, cost_dir=dirs['cost'])
 
-    #parent_dir = Path.cwd()
-    data = parent_dir / 'data' 
+    # VERIFY DATA
+    list_all_tables_row_totals(conn) # print no. rows per table
+    loaded = get_loaded_files(conn, filter_type='waterfall')
+    conn.close()
 
-    raw_dir = data / 'raw'
-    proc_dir = data /  "processed"
-
-    # Refresh all data
-    bulk_consumption_parse(consump_dir = raw_dir /  'Consumption',
-                     proc_consump_dir = proc_dir / 'Consumption', 
-                     overwrite=True)
-
-
-    costPrep(raw_dir / 'Cost.txt', # Just gets the first file from this directory, fix for future?
-            proc_dir / 'Cost.parquet', 
-            save=True, 
-            overwrite=False)
-    
-    bulk_waterfall_parse(waterfall_dir=raw_dir / 'Waterfall', 
-                   wf_proc_dir=proc_dir/'Waterfall', 
-                   overwrite=True)
 
 if __name__ == '__main__':
-    main()
+    pass

@@ -3,6 +3,11 @@
 *.csv
 *.prn
 *.txt
+*.parquet
+*.db
+*.xlsx
+*.xls
+*.xlsm
 *.DS_Store
 
 # Byte-compiled / optimized / DLL files
