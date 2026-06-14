@@ -3,7 +3,7 @@ import os
 from app.core.parser import *
 import pandas as pd
 from datetime import date
-from app.prefixe import pre, dirs
+from app.prefixe import pre, dirs, Path
 import sqlite3
 
 
@@ -264,6 +264,7 @@ def sql_setup(conn):
 
 def main():
     conn = sqlite3.connect(dirs['sql'])
+    sql_setup(conn)
     waterfall_to_sql(conn, waterfall_dir=dirs['raw']/'Waterfall')
     consumption_to_sql(conn,  consump_dir=dirs['raw']/'Consumption')
 
@@ -272,9 +273,9 @@ def main():
 
     # VERIFY DATA
     list_all_tables_row_totals(conn) # print no. rows per table
-    loaded = get_loaded_files(conn, filter_type='waterfall')
+    #loaded = get_loaded_files(conn, filter_type='waterfall')
     conn.close()
 
 
 if __name__ == '__main__':
-    pass
+    main()

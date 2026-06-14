@@ -6,7 +6,8 @@ APP_DIR = Path(__file__).resolve().parent
 dirs = {
     'app': APP_DIR,
     'data': APP_DIR / "data",
-    'reports': APP_DIR / "reports"
+    'reports': APP_DIR / "reports",
+    'figures': APP_DIR / 'figures'
     }
 
 dirs.update({
