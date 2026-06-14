@@ -6,7 +6,9 @@
   <span class="icon">📋</span> Reports
 </div>
 
-<div class="card">
+<div style="display:flex; gap:1.5rem; align-items:flex-start;">
+
+<div class="card" style="flex:1; min-width:0;">
   <form method="POST">
     <table class="form-table">
       <thead>
@@ -16,10 +18,11 @@
       </thead>
       <tbody>
         <tr>
-          <th class="row-label">Report Type</th>
+          <th class="row-label">Report Type
+          </th>
           <td>
-            <select name="report_type">
-              {% set types = ["OrderAccuracy", "FillRate", "DemandSummary", "InventorySnapshot"] %}
+            <select name="report_type" id="report_type_select">
+              {% set types = ["OrderAccuracy",  "DataCoverage"] %}
               {% for t in types %}
                 <option value="{{ t }}"
                   {% if request.form.get('report_type', 'OrderAccuracy') == t %}selected{% endif %}>
@@ -30,20 +33,60 @@
           </td>
         </tr>
         <tr>
-          <th class="row-label">Start Date</th>
+          <th class="row-label">Start Week</th>
           <td>
-            <input type="date" name="week_start"
+            <input type="week" name="week_start"
                    value="{{ request.form.get('week_start', '') }}" />
           </td>
         </tr>
         <tr>
-          <th class="row-label">End Date</th>
+          <th class="row-label">End Week</th>
           <td>
-            <input type="date" name="week_end"
+            <input type="week" name="week_end"
                    value="{{ request.form.get('week_end', '') }}" />
           </td>
         </tr>
-      </tbody>
+        <tr>
+          <th class="row-label">Part Number Starts With</th>
+          <td>
+            <input type="text" name="part_prefix"
+                   placeholder="e.g. AB-"
+                   value="{{ request.form.get('part_prefix', '') }}" />
+          </td>
+        </tr>
+        <tr id="lookahead-row">
+          <th class="row-label">Max. Lookahead (Weeks)
+          <div class="help-text">Only include predictions that are within a certain number of weeks of ordering. </div>
+          </th>
+          <td>
+            <input type="number" name="max_lookahead"
+                   value="{{ request.form.get('lookahead', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Save to file</th>
+          <td>
+            <label>
+              <input type="checkbox"
+                    id="save_to_file"
+                    name="save_to_file"
+                    value="1"
+                    {% if request.form.get('save_to_file') %}checked{% endif %}>
+              Save report as XLSX
+            </label>
+          </td>
+        </tr>
+
+        <tr id="file-path-row"
+            {% if not request.form.get('save_to_file') %}style="display:none;"{% endif %}>
+          <th class="row-label">File Name</th>
+          <td>
+            <input type="text"
+                  name="file_path"
+                  placeholder="report.xlsx"
+                  value="{{ request.form.get('file_path', '') }}">
+          </td>
+        </tr>      </tbody>
     </table>
 
     <div class="action-row">
@@ -61,4 +104,63 @@
     </div>
   </form>
 </div>
+
+
+<div id="report-description" class="report-description">
+  <div id="desc-title" style="font-weight:700; color:var(--navy); margin-bottom:0.5rem; font-size:0.9rem;"></div>
+  <div id="desc-body"></div>
+</div>
+
+</div>
+
+
+{% if chart_html %}
+<div class="card" style="overflow-x: auto; margin-top: 1rem;">
+  {{ chart_html | safe }}
+</div>
+{% endif %}
+
+
+<script>
+const REPORT_DESCRIPTIONS = {
+  OrderAccuracy: {
+    title: "Order Accuracy",
+    body: "Compares predicted order quantities against actuals. Shows error metrics (MAE, MAPE) broken down by lookahead horizon — useful for understanding how forecast quality degrades further into the future."
+  },
+  DataCoverage: {
+    title: "Data Coverage",
+    body: "Heatmap showing which part/week combinations have waterfall predictions, consumption records, both, or neither. Blue = prediction only, yellow = both, red = consumption only."
+  }
+};
+
+const LOOKAHEAD_TYPES = new Set(["OrderAccuracy"]);
+
+document.addEventListener("DOMContentLoaded", function () {
+    const checkbox = document.getElementById("save_to_file");
+    const fileRow = document.getElementById("file-path-row");
+    const lookaheadRow = document.getElementById("lookahead-row");
+    const select = document.getElementById("report_type_select");
+    const descTitle = document.getElementById("desc-title");
+    const descBody = document.getElementById("desc-body");
+
+    function toggleFileInput() {
+        fileRow.style.display = checkbox.checked ? "" : "none";
+    }
+
+    function updateDescription() {
+        const info = REPORT_DESCRIPTIONS[select.value];
+        if (info) {
+            descTitle.textContent = info.title;
+            descBody.textContent = info.body;
+        }
+        lookaheadRow.style.display = LOOKAHEAD_TYPES.has(select.value) ? "" : "none";
+    }
+
+    checkbox.addEventListener("change", toggleFileInput);
+    toggleFileInput();
+
+    select.addEventListener("change", updateDescription);
+    updateDescription();
+});
+</script>
 {% endblock %}

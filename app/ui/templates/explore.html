@@ -11,7 +11,7 @@
     <table class="form-table">
       <thead>
         <tr>
-          <th colspan="2">Explore Prior Weeks of Data</th>
+          <th colspan="2">Check data coverage</th>
         </tr>
       </thead>
       <tbody>
@@ -47,4 +47,10 @@
     </div>
   </form>
 </div>
+
+{% if chart_html %}
+<div class="card">
+  {{ chart_html | safe }}
+</div>
+{% endif %}
 {% endblock %}

@@ -6,6 +6,8 @@
   <span class="icon">🔄</span> Retrain
 </div>
 
+<div style="display:flex; gap:1.5rem; align-items:flex-start;">
+
 <div class="card">
   <form method="POST">
     <table class="form-table">
@@ -16,6 +18,19 @@
       </thead>
       <tbody>
         <tr>
+          <th class="row-label">Base Model</th>
+          <td>
+            <select name="model" style="max-width:260px;">
+              {% for m in models %}
+                <option value="{{ m }}"
+                  {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
+                  {{ m }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
           <th class="row-label" colspan="2" style="background:var(--bg); font-size:12px; font-weight:400; color:var(--text-muted); padding:8px 16px;">
             Prediction Index Range
           </th>
@@ -23,14 +38,14 @@
         <tr>
           <th class="row-label">Earliest Prediction Date</th>
           <td>
-            <input type="date" name="earliest_pred_date"
+            <input type="week" name="earliest_pred_date" id="earliest_pred_date"
                    value="{{ request.form.get('earliest_pred_date', '') }}" />
           </td>
         </tr>
         <tr>
           <th class="row-label">Latest Prediction Date</th>
           <td>
-            <input type="date" name="latest_pred_date"
+            <input type="week" name="latest_pred_date" id="latest_pred_date"
                    value="{{ request.form.get('latest_pred_date', '') }}" />
           </td>
         </tr>
@@ -42,17 +57,26 @@
         <tr>
           <th class="row-label">Earliest Order Date</th>
           <td>
-            <input type="date" name="earliest_order_date"
+            <input type="week" name="earliest_order_date" id="earliest_order_date"
                    value="{{ request.form.get('earliest_order_date', '') }}" />
           </td>
         </tr>
         <tr>
           <th class="row-label">Latest Order Date</th>
           <td>
-            <input type="date" name="latest_order_date"
+            <input type="week" name="latest_order_date" id="latest_order_date"
                    value="{{ request.form.get('latest_order_date', '') }}" />
           </td>
         </tr>
+        <tr>
+          <th class="row-label">Model Name</th>
+          <td>
+            <input type="text" name="model_nickname" id="model_nickname"
+                   value="{{ request.form.get('model_nickname', '') }}"
+                   placeholder="auto-generated from dates" />
+          </td>
+        </tr>
+
       </tbody>
     </table>
 
@@ -72,7 +96,59 @@
   </form>
 </div>
 
+  <div class="helper-sidebar">
+
+    <div id="report-description" class="helper-description">
+      <div id="desc-title" class="desc-title">
+          Information
+      </div>
+      <div id="desc-body">
+          Description.
+      </div>
+    </div>
+
+        <div id="report-description" class="helper-description">
+      <div id="desc-title" class="desc-title">
+          Information
+      </div>
+      <div id="desc-body">
+          Description.
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <p style="margin-top:16px; font-size:13px; color:var(--text-muted);">
   Training progress and estimated completion time will appear in the server console (stdout).
 </p>
+
+<script>
+(function () {
+  const fields = ['earliest_pred_date', 'latest_pred_date', 'earliest_order_date', 'latest_order_date'];
+  const nicknameEl = document.getElementById('model_nickname');
+  let userEdited = nicknameEl.value.length > 0;
+
+  nicknameEl.addEventListener('input', () => { userEdited = true; });
+
+  function fmt(dateStr) {
+    // Convert YYYY-MM-DD to YYYYMMDD
+    return dateStr ? dateStr.replace(/-/g, '') : null;
+  }
+
+  function suggest() {
+    if (userEdited) return;
+    const ep = fmt(document.getElementById('earliest_pred_date').value);
+    const lp = fmt(document.getElementById('latest_pred_date').value);
+    const eo = fmt(document.getElementById('earliest_order_date').value);
+    const lo = fmt(document.getElementById('latest_order_date').value);
+    const parts = [];
+    if (ep && lp) parts.push('pred_' + ep + '_' + lp);
+    if (eo && lo) parts.push('ord_' + eo + '_' + lo);
+    nicknameEl.value = parts.length ? 'model_' + parts.join('_') : '';
+  }
+
+  fields.forEach(id => document.getElementById(id).addEventListener('change', suggest));
+})();
+</script>
 {% endblock %}
