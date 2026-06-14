@@ -1,7 +1,19 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 import subprocess
 import os
-# !!!! Run from command line with "python app.py"
+import sys
+from datetime import datetime
+
+# Make the project root importable so app.* packages resolve
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from app.reporting.data_quality import coverage_report
+from app.reporting.history_report import error_report
+from app.core.parser import week_to_idx
+import sqlite3
+from app.prefixe import dirs
+
+# !!!! Run from command line with "python app/ui/app.py" from project root
 
 # lots of placeholder code in the routes, just have to retool to work with our specific scripts
 app = Flask(__name__)
@@ -22,6 +34,13 @@ def run_script(script_args: list[str]) -> tuple[bool, str]:
         return False, "Operation timed out."
     except FileNotFoundError as e:
         return False, f"Script not found: {e}"
+
+import re
+
+def parse_week_to_idx(week):
+    m = re.fullmatch(r"(\d{4})-W(\d{2})", week)
+    return week_to_idx(int(m.group(1)), int(m.group(2)))
+
 
 
 # ── index ─────────────────────────────────────────────────────────────────────
@@ -55,44 +74,45 @@ def load():
 # we not there yet but we gon get there
 @app.route("/explore", methods=["GET", "POST"])
 def explore():
-    result = None
-    error = None
-    if request.method == "POST":
-        week_start = request.form.get("week_start", "").strip()
-        week_end   = request.form.get("week_end", "").strip()
-        ok, msg = run_script([
-            "python", "backend/explore_data.py",
-            "--week-start", week_start,
-            "--week-end",   week_end,
-        ])
-        if ok:
-            result = msg
-        else:
-            error = msg
-    return render_template("explore.html", active="explore", result=result, error=error)
+    return render_template("explore.html", active="explore", result=None, error=None, chart_html=None)
 
 
 # ── DATA / Reports ────────────────────────────────────────────────────────────
-# as of now only provides functionality to select the report type, start/end weeks, and to save as .xlsx
 @app.route("/reports", methods=["GET", "POST"])
 def reports():
     result = None
     error = None
+    chart_html = None
     if request.method == "POST":
         report_type = request.form.get("report_type", "OrderAccuracy")
         week_start  = request.form.get("week_start", "").strip()
         week_end    = request.form.get("week_end",   "").strip()
-        ok, msg = run_script([
-            "python", "backend/generate_report.py",
-            "--type",       report_type,
-            "--week-start", week_start,
-            "--week-end",   week_end,
-        ])
-        if ok:
-            result = msg
-        else:
-            error = msg
-    return render_template("reports.html", active="reports", result=result, error=error)
+        max_lookahead = request.form.get("max_lookahead", "").strip()
+        save_to_file = request.form.get("save_to_file") == "1"
+        file_path = request.form.get("file_path", "").strip()
+        part_prefix = request.form.get("part_prefix", "").strip() or None
+
+        try:
+            since_idx = None
+            until_idx = None
+            if week_start:
+                since_idx = parse_week_to_idx(week_start)
+            if week_end:
+                until_idx = parse_week_to_idx(week_end)
+            if report_type == "OrderAccuracy":
+                chart_html = error_report(save_to_file=save_to_file,
+                                         save_loc=file_path if save_to_file else None,
+                                         max_lookahead=int(max_lookahead) if max_lookahead else None,
+                                         since_idx=since_idx, until_idx=until_idx,
+                                         part_prefix=part_prefix,
+                                         render=True)
+            elif report_type == "DataCoverage":
+                chart_html = coverage_report(since_idx=since_idx, until_idx=until_idx, part_prefix=part_prefix)
+            else:
+                error = f"Report type '{report_type}' is not yet implemented."
+        except Exception as e:
+            error = str(e)
+    return render_template("reports.html", active="reports", result=result, error=error, chart_html=chart_html)
 
 
 # ── MODEL / Predict ───────────────────────────────────────────────────────────
@@ -143,25 +163,22 @@ def predict():
 def retrain():
     result = None
     error = None
+    models = _list_models()
     if request.method == "POST":
+        model          = request.form.get("model", "").strip()
         earliest_pred  = request.form.get("earliest_pred_date", "").strip()
         latest_pred    = request.form.get("latest_pred_date",   "").strip()
         earliest_order = request.form.get("earliest_order_date","").strip()
         latest_order   = request.form.get("latest_order_date",  "").strip()
+        nickname       = request.form.get("model_nickname", "").strip()
         # run the training script here
-        ok, msg = run_script([
-            "python", "backend/retrain.py",
-            "--earliest-pred",  earliest_pred,
-            "--latest-pred",    latest_pred,
-            "--earliest-order", earliest_order,
-            "--latest-order",   latest_order,
-        ])
-        if ok:
-            result = msg   # expected: path to new .pkl
-        else:
-            error = msg
 
-    return render_template("retrain.html", active="retrain", result=result, error=error)
+        # if ok:
+        #     result = msg   # expected: path to new .pkl
+        # else:
+        #     error = msg
+
+    return render_template("retrain.html", active="retrain", models=models, result=result, error=error)
 
 
 # ── MODEL / Evaluate ──────────────────────────────────────────────────────────
@@ -200,13 +217,13 @@ def evaluate():
 # ── util ──────────────────────────────────────────────────────────────────────
 # once we have existing models, this function could populate selection dropdowns
 def _list_models():
-    """Return available model names from the models/ directory."""
-    model_dir = os.path.join(os.path.dirname(__file__), "models")
+    """Return available model names from the saved_models/ directory."""
+    model_dir = os.path.join(os.path.dirname(__file__), "..", "models", "saved_models")
     if not os.path.isdir(model_dir):
         return ["Full Dataset (2026wk01)"]   # fallback placeholder
-    return [
+    return sorted(
         f for f in os.listdir(model_dir) if f.endswith(".pkl")
-    ] or ["Full Dataset (2026wk01)"]
+    ) or ["Full Dataset (2026wk01)"]
 
 
 if __name__ == "__main__":
