@@ -5,7 +5,7 @@ ARG PORT=4999
 ENV APP_PORT=$PORT
 
 # step 2: any OS-level dependency install only, gcc included as sometimes .py libraries need to compile C extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         gcc \
     && rm -rf /var/lib/apt/lists/*
 
