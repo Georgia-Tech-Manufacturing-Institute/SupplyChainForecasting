@@ -15,7 +15,8 @@ pq = pre['pq']
 
 def build_training_dataset(conn, min_orderidx: int = None,
                            max_orderidx: int = None,
-                           remove_nans: bool = True) -> pd.DataFrame:
+                           remove_nans: bool = True,
+                           progress_cb=None) -> pd.DataFrame:
     """
     Pull waterfall, consumption, and cost from conn and return a
     feature-ready DataFrame suitable for model_train().
@@ -31,7 +32,7 @@ def build_training_dataset(conn, min_orderidx: int = None,
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
 
-    waterfall   = waterfall_features(wf)
+    waterfall   = waterfall_features(wf, progress_cb=progress_cb)
     consumption = consumption_features(cf)
 
     merged = (

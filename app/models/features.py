@@ -185,10 +185,13 @@ def release_gp_variation(agg_frame, col, unit=None):
         ], axis=1).reset_index()
     return release_accuracy
 
-def waterfall_features(frame, extend=True):
+def waterfall_features(frame, extend=True, progress_cb=None):
+    """
+    progress_cb(step, total, message) — called during the walk-forward loop so
+    callers can report progress to a UI.  step is 0-indexed, total is loop length.
+    """
     df = frame.copy()
     df = df.sort_values(['part', oi, pi]).reset_index(drop=True)
-    # Prior guess (nonzero, based on waterfall)
     df['lookahead_wk'] = df.orderidx - df.predidx
     df['predqty_lag_qty'] = df.groupby("part").shift(1).predqty
     df['lag_ratio'] = df.predqty_lag_qty/(df.predqty+1)
@@ -196,26 +199,21 @@ def waterfall_features(frame, extend=True):
         df = pd.concat([df, extend_predictions(df)],axis=0)
         df = df.sort_values(['part', oi, pi])
     df = grouped_column_statistics(df, value_col=pq, sort_col=pi,
-                                   prefix=pq, unit='qty' )
-    
-    # PN Specific history
-    # highest ever predicted value (for a given week) for that 
+                                   prefix=pq, unit='qty')
+
     df['predqqty_max_qty'] = df.groupby("part")["predqty"].cummax()
 
-    # Simultaneous demand / walk forward stats
-    for idx in sorted(df.predidx.unique()):
-        known_info = df[df[pi]<=idx] # get the most recent order info per date
+    # Walk-forward simultaneous demand (the most expensive loop)
+    unique_idxs = sorted(df.predidx.unique())
+    n_idxs = len(unique_idxs)
+    for step, idx in enumerate(unique_idxs):
+        if progress_cb:
+            progress_cb(step, n_idxs, f'Walk-forward features: week {step + 1} / {n_idxs}')
+        known_info = df[df[pi] <= idx]
         latest_info = known_info.loc[known_info.groupby(['part', oi])[pi].idxmax()]
         mask = df[pi] == idx
         simultaneous_demand = latest_info.groupby([oi])[pq].count()
         df.loc[mask, 'orderidx_part_count'] = df.loc[mask, oi].map(simultaneous_demand)
-
-    # Rolling statistic - compute after adding in zeros
-    # df = roll_statistics(df, target_col='predqty', n=2, func=['sum'])
-    # df = roll_statistics(df, target_col='predqty', n=3, func=['sum'])
-
-    # qty change from prior_order
-    #df = pd.concat([df, id_features(df.part, 8)],axis=1)
 
     df["predqty_1wkdiff_qty"] = df.groupby(["part", oi])[pq].diff()
 
