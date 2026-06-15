@@ -18,11 +18,17 @@
   <span class="icon">🎯</span> Predict
 </div>
 
+<div class="hint-layout">
+
 <div class="card">
   <form method="POST">
     <table class="form-table">
       <thead>
-        <tr>
+        <tr><th colspan="2">Make predictions on future ordering</th></tr>
+      </thead>
+
+      <tbody>
+          <tr>
           <th>Choose Model:</th>
           <td>
             <select name="model" style="max-width:260px;">
@@ -35,8 +41,6 @@
             </select>
           </td>
         </tr>
-      </thead>
-      <tbody>
         <tr>
           <th class="row-label">Plant Source</th>
           <td>
@@ -50,14 +54,14 @@
             </select>
           </td>
         </tr>
-        <tr>
+        <!-- <tr>
           <th class="row-label">Part Prefix Filter</th>
           <td>
             <input type="text" name="part_number"
                    placeholder="e.g. 240  (leave blank for all parts)"
                    value="{{ request.form.get('part_number', '') }}" />
           </td>
-        </tr>
+        </tr> -->
       </tbody>
     </table>
 
@@ -70,6 +74,18 @@
     </div>
   </form>
 </div>
+
+<div class="helper-sidebar">
+  <div id="static-description" class="report-description">
+    <div id="page-info"  class="desc-title"> About predictions</div>
+    <div id="page-desc">This page uses a previously trained model to create new predictions. </div>
+  </div>
+</div>
+</div>
+
+
+</div> <!---End Hint Layout --->
+
 
 {% if table_html %}
 <div class="card" style="margin-top:1.5rem;">
@@ -84,12 +100,15 @@
   </div>
 </div>
 {% elif result and not error %}
+
 <div class="card" style="margin-top:1.5rem;">
   <div class="result-banner">
     Predictions saved to<br/>
     <span class="preview-path">{{ result }}</span>
   </div>
 </div>
+
+ 
 {% endif %}
 
 {% endblock %}
