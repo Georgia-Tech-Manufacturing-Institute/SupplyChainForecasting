@@ -1,26 +1,21 @@
 from pathlib import Path
 # Paths
 
-APP_DIR = Path(__file__).resolve().parent
+APP_DIR = Path(__file__).resolve().parent   # app/
+ROOT_DIR = APP_DIR.parent                   # project root
 
 dirs = {
     'app': APP_DIR,
-    'ext_data': APP_DIR.resolve().parent / 'data',
-    'data': APP_DIR / "data",
-    'reports': APP_DIR / "reports",
-    'figures': APP_DIR / 'figures'
-    }
+    'data': ROOT_DIR / 'data',          # root-level data dir; plant files at data/{plant}/raw/{type}/
+    'ext_data': ROOT_DIR / 'data',      # alias used by upload routes
+    'reports': ROOT_DIR / 'reports',
+    'figures': APP_DIR / 'figures',
+}
 
 dirs.update({
-    'raw': dirs['data'] / 'raw',
-    'processed': dirs['data'] / 'processed',
-    'ext_processed': dirs['ext_data'] / 'processed'
-
-             })
-dirs.update({
-    'cost': dirs['raw'] / 'Cost.txt',
-    'saved_models': APP_DIR / 'models' / 'saved_models',
-    })
+    'processed': dirs['data'] / 'processed',                  # .db files per plant land here
+    'saved_models': ROOT_DIR / 'models' / 'saved_models',     # matches docker volume ./models
+})
 
 
 PLANT_SOURCES = ['Arlington', 'Hermasillo']

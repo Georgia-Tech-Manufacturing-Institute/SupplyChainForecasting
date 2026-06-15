@@ -1,6 +1,8 @@
 # step 1: install base image
 # python:3.12-slim gives a lean Debian base with Python pre-installed.
 FROM python:3.12-slim
+ARG PORT=4999
+ENV APP_PORT=$PORT
 
 # step 2: any OS-level dependency install only, gcc included as sometimes .py libraries need to compile C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,11 +23,11 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY . .
 
 # create directories the app expects to exist at runtime (based on current routes)
-RUN mkdir -p /app/models /app/reports /app/backend /data/raw/incoming
+RUN mkdir -p /app/models/saved_models /app/reports /app/backend /app/data/processed
 
 # runtime config stuff
 # expose the port Flask/Gunicorn will listen on
-EXPOSE 5000
+EXPOSE $APP_PORT
 
 # FLASK_ENV tells Flask not to use the reloader inside the container (turns off Flask debugger and server restarts when files change)
 ENV FLASK_ENV=production \
@@ -35,4 +37,4 @@ ENV FLASK_ENV=production \
 # Gunicorn is a proper production WSGI server (more stable than flask's at least)
 # Workers=2 is safe for a single-user local tool; would have to scale up a bit for a networked, multi-user tool (would also likely required some beefier hardware as well)
 # Binding to 0.0.0.0 is required so Docker's port mapping can reach it.
-CMD ["gunicorn", "--workers=2", "--bind=0.0.0.0:5000", "--timeout=600", "app:app"]
+CMD ["sh", "-c", "gunicorn --workers=2 --bind=0.0.0.0:${APP_PORT} --timeout=600 app.ui.app:app"]

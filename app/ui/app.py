@@ -380,8 +380,8 @@ def evaluate():
 # once we have existing models, this function could populate selection dropdowns
 def _list_models():
     """Return available model names from the saved_models/ directory."""
-    model_dir = os.path.join(os.path.dirname(__file__), "..", "models", "saved_models")
-    if not os.path.isdir(model_dir):
+    model_dir = dirs['saved_models']
+    if not model_dir.is_dir():
         return ["Full Dataset (2026wk01)"]   # fallback placeholder
     return sorted(
         f for f in os.listdir(model_dir) if f.endswith(".pkl")

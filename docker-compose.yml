@@ -2,12 +2,12 @@ services:
   forecast-tool:
     build: .
     ports:
-      - "5000:5000"         # localhost:5000 → container:5000
+      - "4999:4999"         # localhost:5000 → container:5000
     volumes:
       # mount local data/output folders into the container so backend scripts can read input files and write results back to the host.
       # left side  = path on YOUR personal machine  (needs updates)
       # right side = path the container sees (filepaths called by Flask routes)
-      - ./data:/data
+      - ./data:/app/data
       - ./models:/app/models
       - ./reports:/app/reports
       - ./backend:/app/backend
