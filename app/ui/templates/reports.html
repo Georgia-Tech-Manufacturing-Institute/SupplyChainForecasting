@@ -18,6 +18,19 @@
       </thead>
       <tbody>
         <tr>
+          <th class="row-label">Plant Source</th>
+          <td>
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
           <th class="row-label">Report Type
           </th>
           <td>
@@ -36,14 +49,14 @@
           <th class="row-label">Start Week</th>
           <td>
             <input type="week" name="week_start"
-                   value="{{ request.form.get('week_start', '') }}" />
+                   value="{{ request.form.get('week_start', '2024-W40') }}" />
           </td>
         </tr>
         <tr>
           <th class="row-label">End Week</th>
           <td>
             <input type="week" name="week_end"
-                   value="{{ request.form.get('week_end', '') }}" />
+                   value="{{ request.form.get('week_end', current_week) }}" />
           </td>
         </tr>
         <tr>
@@ -110,12 +123,16 @@
   </form>
 </div>
 
-
-<div id="report-description" class="report-description">
-  <div id="desc-title" style="font-weight:700; color:var(--navy); margin-bottom:0.5rem; font-size:0.9rem;"></div>
-  <div id="desc-body"></div>
+<div class="helper-sidebar">
+  <div id="static-description" class="report-description">
+    <div id="page-info"  class="desc-title"> Reports</div>
+    <div id="page-desc">This page generates data descriptors not related to a specific predictive model. This exclusively concerns information as provided to the system. Choose a report type to learn more. </div>
+  </div>
+  <div id="report-description" class="report-description">
+    <div id="dynamic-report-title" class="desc-title"></div>
+    <div id="dynamic-report-body"></div>
+  </div>
 </div>
-
 </div>
 
 
@@ -130,11 +147,11 @@
 const REPORT_DESCRIPTIONS = {
   OrderAccuracy: {
     title: "Order Accuracy",
-    body: "Compares predicted order quantities against actuals. Shows error metrics (MAE, MAPE) broken down by lookahead horizon — useful for understanding how forecast quality degrades further into the future."
+    body: "Report on the historical accuracy of customer-supplied predictions; this report provides \"bins\" which show how frequently/by how much a prediction was off. \nNotably, this will weight each prediction equally- if there are many prior predictions for the same order date, this might bias the distribution. Restricting the time range and weeks of lookahead can tune results."
   },
   DataCoverage: {
     title: "Data Coverage",
-    body: "Heatmap showing which part/week combinations have waterfall predictions, consumption records, both, or neither. Blue = prediction only, yellow = both, red = consumption only."
+    body: "Compares historical predictions to actual ordering; by default, accumulates all predictions and weights them equally.",
   }
 };
 
@@ -145,8 +162,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const fileRow = document.getElementById("file-path-row");
     const lookaheadRow = document.getElementById("lookahead-row");
     const select = document.getElementById("report_type_select");
-    const descTitle = document.getElementById("desc-title");
-    const descBody = document.getElementById("desc-body");
+    const descTitle = document.getElementById("dynamic-report-title");
+    const descBody = document.getElementById("dynamic-report-body");
 
     function toggleFileInput() {
         fileRow.style.display = checkbox.checked ? "" : "none";

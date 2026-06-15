@@ -6,8 +6,9 @@
   <span class="icon">📥</span> Load Data
 </div>
 
+<div class="hint-layout">
 <div class="card">
-  <form method="POST">
+  <form method="POST" enctype="multipart/form-data">
     <table class="form-table">
       <thead>
         <tr>
@@ -16,17 +17,46 @@
       </thead>
       <tbody>
         <tr>
-          <th class="row-label">Source Folder</th>
+          <th class="row-label">Plant Source</th>
           <td>
-            <input type="file" name="folder_path"
-              webkitdirectory directory multiple>
-            <!-- <input type="file" name="folder_path"
-            accept=".prn" multiple> -->
-            <!-- <input type="text" name="folder_path"
-                   placeholder="/data/raw/incoming"
-                   value="{{ request.form.get('folder_path', '') }}" /> -->
-            <div style="margin-top:6px; font-size:12px; color:var(--text-muted);">
-              Folder containing <code>.prn</code> files to process
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Data Type</th>
+          <td>
+            <select name="data_type" class="form-select">
+              <option value="Consumption" {% if request.form.get('data_type') == 'Consumption' %}selected{% endif %}>Consumption</option>
+              <option value="Waterfall"   {% if request.form.get('data_type') == 'Waterfall'   %}selected{% endif %}>Waterfall</option>
+              <option value="Cost"        {% if request.form.get('data_type') == 'Cost'        %}selected{% endif %}>Cost</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Files</th>
+          <td>
+            <input type="file" name="files" multiple
+                   accept=".prn,.txt">
+            <div style="margin-top:4px; font-size:12px; color:var(--text-muted);">
+              Select individual <code>.prn</code> files
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">— or Folder —</th>
+          <td>
+            <input type="file" name="files"
+                   webkitdirectory directory multiple>
+            <div style="margin-top:4px; font-size:12px; color:var(--text-muted);">
+              Select a folder; only <code>.prn</code>/<code>.txt</code> files matching
+              <code>YYYYwkWW.prn</code> (e.g. <code>2026wk01.prn</code>) will be accepted
             </div>
           </td>
         </tr>
@@ -45,10 +75,24 @@
   </form>
 </div>
 
+  <div class="helper-sidebar">
 
+    <div id="report-description" class="helper-description">
+      <div id="desc-title" class="desc-title">
+          Loading New Data
+      </div>
+      <div id="desc-body">
+          Loaded data is automatically parsed into the processed database.
+          Files must follow the naming convention <code>YYYYwkWW.prn</code>
+          (e.g. <code>2026wk01.prn</code>, <code>2024wk52.prn</code>).
+          Files are deposited under <code>data/&lt;plant&gt;/raw/&lt;data type&gt;/</code>
+          then loaded into a processed database. 
+          <br> Currently, no strategies exist for item to item data management; still TODO: allow overwrite of data - for now, what you upload is permanently in the system - exerise caution!
 
-<!-- <p style="margin-top:16px; font-size:13px; color:var(--text-muted);">
-  <strong>Note:</strong> Placing <code>.prn</code> files in the watched folder will also trigger
-  automatic processing. Use this button to trigger the pipeline manually.
-</p> -->
+      </div>
+    </div>
+
+  </div>
+
+</div>
 {% endblock %}

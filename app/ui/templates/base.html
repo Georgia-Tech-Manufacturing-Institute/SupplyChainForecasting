@@ -26,8 +26,8 @@
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Model</div>
+      <a href="{{ url_for('retrain') }}"  class="nav-item {% if active=='retrain'  %}active{% endif %}">Train</a>
       <a href="{{ url_for('predict') }}"  class="nav-item {% if active=='predict'  %}active{% endif %}">Predict</a>
-      <a href="{{ url_for('retrain') }}"  class="nav-item {% if active=='retrain'  %}active{% endif %}">Retrain</a>
       <a href="{{ url_for('evaluate') }}" class="nav-item {% if active=='evaluate' %}active{% endif %}">Evaluate</a>
     </div>
   </aside>

@@ -218,6 +218,11 @@ def waterfall_features(frame, extend=True):
     #df = pd.concat([df, id_features(df.part, 8)],axis=1)
 
     df["predqty_1wkdiff_qty"] = df.groupby(["part", oi])[pq].diff()
+
+    df = prediction_maturity_features(df)
+    df = relative_magnitude_features(df)
+    df = seasonal_index_features(df, oi)
+    df = seasonal_index_features(df, pi)
     return df
 
 def normalize_qty_features(frame, div_col = 'predqqty_max_qty'):
@@ -236,15 +241,78 @@ def n_prior_pred(wf, n_weeks):
 def consumption_features(frame):
     cf = frame.copy()
     # Create features based on consumption data - for each order date, what was the context of prior ordering behavior
-    newcf = cf[["part", oi, oq]]
-    for i in range(2,4): # rolling is okay since we have all data every map. 
+    newcf = cf[["part", oi, oq]].sort_values(["part", oi])
+    for i in range(2,4): # rolling is okay since we have all data every map.
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
-    # Prior order 
+    # Prior order
     newcf[f'part_lag1_qty'] = newcf.groupby("part").shift(1)[oq]
     newcf[f'part_lag2_qty'] = newcf.groupby("part").shift(2)[oq]
-    # # Difference from prior order
-    # newcf['='] = newcf.groupby("part").Orderidx.diff()
+    # Time between orders: captures ordering regularity
+    newcf['order_gap_wk'] = newcf.groupby("part")[oi].diff()
+    newcf['order_gap_mean_wk'] = (
+        newcf.groupby("part")['order_gap_wk']
+        .transform(lambda s: s.expanding().mean())
+    )
+    newcf['order_gap_std_wk'] = (
+        newcf.groupby("part")['order_gap_wk']
+        .transform(lambda s: s.expanding().std())
+    )
     return newcf
+
+
+def prediction_maturity_features(df):
+    """How far along in the prediction lifecycle is each part/order pair?"""
+    df = df.copy()
+    # Number of prior predictions issued for this order (0-indexed: 0 = first prediction)
+    df['n_prior_preds'] = df.groupby(['part', oi]).cumcount()
+    # Predqty at first prediction for this order
+    first_predqty = df.groupby(['part', oi])[pq].transform('first')
+    df['first_predqty'] = first_predqty
+    # Total drift from the initial prediction
+    df['predqty_total_drift'] = df[pq] - first_predqty
+    # Ratio of current prediction to the first prediction (1.0 = unchanged)
+    df['first_to_current_ratio'] = df[pq] / (first_predqty + 1)
+    return df
+
+
+def relative_magnitude_features(df):
+    """Predqty relative to this part's historical distribution (requires expanding stats already computed)."""
+    df = df.copy()
+    df['predqty_vs_mean_ratio'] = df[pq] / (df['predqty_mean_qty'] + 1)
+    df['predqty_vs_max_ratio'] = df[pq] / (df['predqqty_max_qty'] + 1)
+    return df
+
+
+def seasonal_index_features(df, idx_col):
+    """Week-of-year and fiscal quarter derived from a week-index column."""
+    df = df.copy()
+    week_of_year = df[idx_col] % 52
+    df[f'{idx_col}_woy'] = week_of_year
+    df[f'{idx_col}_quarter'] = week_of_year // 13
+    return df
+
+
+def demand_share_features(df):
+    """Part's predicted qty as a fraction of total demand in the same order week.
+    Computed walk-forward so only info available at prediction time is used."""
+    df = df.copy()
+    df['demand_share'] = np.nan
+    df['total_orderidx_demand'] = np.nan
+
+    for idx in sorted(df[pi].unique()):
+        known = df[df[pi] <= idx]
+        latest = known.loc[known.groupby(['part', oi])[pi].idxmax()]
+        mask = df[pi] == idx
+
+        total = latest.groupby(oi)[pq].sum().rename('total')
+        per_part = latest.set_index([oi, 'part'])[pq]
+        total_mapped = df.loc[mask, oi].map(total)
+
+        df.loc[mask, 'total_orderidx_demand'] = total_mapped.values
+        df.loc[mask, 'demand_share'] = (
+            df.loc[mask, pq].values / (total_mapped.values + 1)
+        )
+    return df
 
 def acc_features(real_data):
     # merged: ordering aligned dataframe

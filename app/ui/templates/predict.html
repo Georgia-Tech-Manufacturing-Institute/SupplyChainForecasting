@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Predict — Forecast Tool{% endblock %}
 
+{% block extra_head %}
+<style>
+.pred-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pred-table th { background: var(--surface); border-bottom: 2px solid var(--border);
+                 padding: 6px 10px; text-align: left; font-weight: 600; }
+.pred-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
+.pred-table tr:hover td { background: var(--surface); }
+.result-count { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
+.table-scroll  { max-height: 480px; overflow-y: auto; margin-top: 12px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-title">
   <span class="icon">🎯</span> Predict
@@ -16,7 +28,7 @@
             <select name="model" style="max-width:260px;">
               {% for m in models %}
                 <option value="{{ m }}"
-                  {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
+                  {% if request.form.get('model', models[0] if models else '') == m %}selected{% endif %}>
                   {{ m }}
                 </option>
               {% endfor %}
@@ -26,37 +38,24 @@
       </thead>
       <tbody>
         <tr>
-          <th class="row-label">Prediction Target Date</th>
+          <th class="row-label">Plant Source</th>
           <td>
-            <input type="week" name="pred_date"
-                   value="{{ request.form.get('pred_date', '') }}" />
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
           </td>
         </tr>
         <tr>
-          <th class="row-label">Max. Lookahead (weeks)</th>
-          <td>
-            <input type="number" name="order_horizon"
-                   min="1" max="52"
-                   value="{{ request.form.get('order_horizon', '24') }}"
-                   style="max-width:100px;" />
-          </td>
-        </tr>
-        <tr>
-          <th class="row-label">Part Number</th>
+          <th class="row-label">Part Prefix Filter</th>
           <td>
             <input type="text" name="part_number"
-                   placeholder="e.g. 10234  (leave blank for multi)"
+                   placeholder="e.g. 240  (leave blank for all parts)"
                    value="{{ request.form.get('part_number', '') }}" />
-          </td>
-        </tr>
-        <tr>
-          <th class="row-label">Waterfall Fill (multi)</th>
-          <td>
-            <label class="check-label">
-              <input type="checkbox" name="multi_mode"
-                {% if request.form.get('multi_mode') == 'on' %}checked{% endif %} />
-              Generate predictions with waterfall fill across all parts
-            </label>
           </td>
         </tr>
       </tbody>
@@ -65,16 +64,32 @@
     <div class="action-row">
       <button type="submit" class="btn-run">Make Predictions</button>
 
-      {% if result %}
-        <div class="result-banner">
-          Report saved to<br/>
-          <span class="preview-path">{{ result }}</span>
-          <div class="xlsx-hint">Excel file (.xlsx)</div>
-        </div>
-      {% elif error %}
+      {% if error %}
         <span class="error-banner">✖ {{ error }}</span>
       {% endif %}
     </div>
   </form>
 </div>
+
+{% if table_html %}
+<div class="card" style="margin-top:1.5rem;">
+  <div class="result-count">
+    Showing first 200 of <strong>{{ row_count }}</strong> rows &nbsp;|&nbsp;
+    {% if result %}
+      Full results saved to <code>{{ result }}</code>
+    {% endif %}
+  </div>
+  <div class="table-scroll">
+    {{ table_html | safe }}
+  </div>
+</div>
+{% elif result and not error %}
+<div class="card" style="margin-top:1.5rem;">
+  <div class="result-banner">
+    Predictions saved to<br/>
+    <span class="preview-path">{{ result }}</span>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}

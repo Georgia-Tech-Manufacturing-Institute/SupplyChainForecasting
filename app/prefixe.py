@@ -23,6 +23,8 @@ dirs.update({
     })
 
 
+PLANT_SOURCES = ['Arlington', 'Hermasillo']
+
 # pre dictionary
 pre = {
     'pp': 'pred',

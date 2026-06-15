@@ -26,8 +26,8 @@ def build_bins(b, xmin=-1, xmax=1):
     bins = np.array(bins).round(2)
     return bins[1:-1]
 
-def error_report(save_to_file=True, save_loc=None, max_lookahead=None, since_idx=None, until_idx=None, part_prefix=None, render=False):
-    latest = merged_data()
+def error_report(plant='arlington', save_to_file=True, save_loc=None, max_lookahead=None, since_idx=None, until_idx=None, part_prefix=None, render=False):
+    latest = merged_data(plant)
     latest['lookahead'] = latest[pre['oi']] - latest[pre['pi']]
     latest['error'] = (latest[pre['oq']] - latest[pre['pq']])
 
@@ -45,12 +45,13 @@ def error_report(save_to_file=True, save_loc=None, max_lookahead=None, since_idx
     latest.loc[latest.error<0, 'Pct'] = latest.error/latest[pre['pq']]
 
     bins = build_bins(0.1) # bin width 
-
     latest['bins'] =  pd.cut(latest["Pct"], bins=bins, include_lowest=True)
     bin_counts = latest.groupby("part").value_counts(["bins"])
 
     report = pd.pivot_table(bin_counts.reset_index(), index="part", columns="bins",  fill_value=0) 
     report = report.droplevel(0,axis=1)
+    report.columns = [int(m*100) for m in report.columns.categories.mid]
+
     report.rename({report.columns[0]: '<-100%', report.columns[-1]: '>100%'}, axis=1, inplace=True)
     pct_report = report.div(report.sum(axis=1),axis=0).round(2)
 
@@ -76,7 +77,7 @@ def error_report(save_to_file=True, save_loc=None, max_lookahead=None, since_idx
                 hovertemplate=(
                     "Consumption: %{x}<br>"
                     "Part: %{y}<br>"
-                    "% of predictions: %{z}<br>"
+                    "% of predictions: %{z:.1%}<br>"
                     "No. of predictions:%{customdata}"
                     "<extra></extra>"
                 ),

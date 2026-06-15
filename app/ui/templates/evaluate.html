@@ -28,6 +28,19 @@
       </thead>
       <tbody>
         <tr>
+          <th class="row-label">Plant Source</th>
+          <td>
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
           <th class="row-label">Evaluation Start Date</th>
           <td>
             <input type="week" name="eval_start"

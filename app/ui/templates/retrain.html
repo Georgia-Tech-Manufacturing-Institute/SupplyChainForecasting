@@ -18,13 +18,13 @@
       </thead>
       <tbody>
         <tr>
-          <th class="row-label">Base Model</th>
+          <th class="row-label">Plant Source</th>
           <td>
-            <select name="model" style="max-width:260px;">
-              {% for m in models %}
-                <option value="{{ m }}"
-                  {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
-                  {{ m }}
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
                 </option>
               {% endfor %}
             </select>
@@ -66,6 +66,17 @@
           <td>
             <input type="week" name="latest_order_date" id="latest_order_date"
                    value="{{ request.form.get('latest_order_date', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Holdout Weeks</th>
+          <td>
+            <input type="number" name="holdout_weeks" min="0" max="52"
+                   value="{{ request.form.get('holdout_weeks', '0') }}"
+                   style="max-width:80px;" />
+            <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">
+              0 = use all data (no validation split)
+            </span>
           </td>
         </tr>
         <tr>

@@ -22,14 +22,21 @@ def filter_lookahead(df, max_lookahead: int):
     lookahead = df[pre['oi']] - df[pre['pi']]
     return df[lookahead <= max_lookahead]
 
-def get_wf_cf():
-    conn = sqlite3.connect(dirs['sql'])
+def get_wf_cf(plant):
+    plant = plant.strip().lower()+'.db'
+    try:
+        conn = sqlite3.connect(dirs['processed'] / plant)
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            raise ValueError("Plant doesn't exist") from e
+        raise e
+
     import sqlite3 as _sqlite3
     wf = filter_SQL(conn, table='waterfall_agg')
     cf = filter_SQL(conn, table='consumption')
     conn.close()
     return wf, cf
 
-def merged_data():
-    wf, cf = get_wf_cf()
+def merged_data(plant):
+    wf, cf = get_wf_cf(plant)
     return wf.merge(cf, on=['part', pre['oi']], how='inner')

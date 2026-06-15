@@ -2,8 +2,8 @@ from app.core.loader import *
 from app.reporting.core import * 
 from app.prefixe import pre, dirs
 
-def coverage_report(since_idx=None, until_idx=None, part_prefix=None):
-    wf, cf = get_wf_cf()
+def coverage_report(plant='arlington', since_idx=None, until_idx=None, part_prefix=None):
+    wf, cf = get_wf_cf('arlington')
     if since_idx is not None:
         wf = wf[wf['orderidx'] >= since_idx]
         cf = cf[cf['orderidx'] >= since_idx]
@@ -37,7 +37,6 @@ def coverage_report(since_idx=None, until_idx=None, part_prefix=None):
         .sum()
     )
     pivot = result.pivot(index='part', columns='orderidx')
-    print(pivot.columns)
     z = pivot.values.copy()
     z[z == 1] = 2
     z[z == 0] = 1
