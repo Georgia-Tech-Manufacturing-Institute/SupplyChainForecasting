@@ -60,6 +60,12 @@ header h1 { font-size: 17px; font-weight: 600; letter-spacing: .3px; }
   overflow: hidden;
 }
 
+.hint-layout{
+  display:flex; 
+  gap:1.5rem;
+  align-items:flex-start;
+}
+
 /* ── sidebar ──────────────────────────────────────────── */
 aside {
   width: 190px;
@@ -125,7 +131,8 @@ main {
 }
 .form-table th, .form-table td {
   padding: 11px 16px;
-
+  word-break: break-word;
+  overflow-wrap: anywhere;
   font-size: 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
@@ -140,8 +147,6 @@ main {
   background: var(--blue-row);
   color: var(--navy);
   font-weight: 600;
-  width: 200px;
-  white-space: nowrap;
 }
 .form-table tr:last-child td,
 .form-table tr:last-child th { border-bottom: none; }
@@ -253,19 +258,16 @@ label.check-label {
 }
 
 .help-text {
-  font-size: 8px;
+  font-size: 12px;
   word-wrap: break-word; 
-  max-width: 20px;
   overflow-wrap: break-word;
 
   color: #777;
 }
 
-
-/* -- Page descriptio --*/
-
 .report-description {
     flex: 0 0 240px;
+    height: fit-content;
     background: var(--sidebar-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -283,21 +285,10 @@ label.check-label {
     font-size: 0.9rem;
 }
 
-.interactive-sidebar {
-  flex: 0 0 240px;
-  background: var(--sidebar-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 1rem 1.2rem;
-  font-size: 0.875rem;
-  line-height: 1.55;
-  color: var(--text-muted);
-}
-
-/* -- Page descriptio --*/
+/* -- SIDEBAR  --*/
 .helper-sidebar {
     display: flex;
+    flex: 0 0 240px;
     flex-direction: column;
     gap: 2rem;
 }
@@ -314,9 +305,3 @@ label.check-label {
     color: var(--text-muted);
 }
 
-.desc-title {
-    font-weight: 700;
-    color: var(--navy);
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-}
