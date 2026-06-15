@@ -6,6 +6,36 @@
   <span class="icon">📥</span> Load Data
 </div>
 
+<div class="transparent-card">
+  <div class="heatmap-title">
+    Data Coverage
+    <span id="heatmap-plant-label" class="heatmap-plant-label"></span>
+  </div>
+
+  <div id="heatmap-error" class="heatmap-error" style="display:none;"></div>
+  <div id="heatmap-loading" class="heatmap-status">Loading…</div>
+
+  <div id="heatmap-container" style="display:none;">
+    <div class="heatmap-section-label">WATERFALL</div>
+    <div id="heatmap-wf" class="heatmap-grid"></div>
+
+    <div class="heatmap-section-label">CONSUMPTION</div>
+    <div id="heatmap-cf" class="heatmap-grid"></div>
+
+    <div class="heatmap-legend">
+      <span class="heatmap-legend-label">Less</span>
+      <div class="heatmap-legend-swatch" data-level="0"></div>
+      <div class="heatmap-legend-swatch" data-level="1"></div>
+      <div class="heatmap-legend-swatch" data-level="2"></div>
+      <div class="heatmap-legend-swatch" data-level="3"></div>
+      <div class="heatmap-legend-swatch" data-level="4"></div>
+      <span class="heatmap-legend-label">More</span>
+    </div>
+  </div>
+
+  <div id="heatmap-tooltip" class="heatmap-tooltip"></div>
+</div>
+
 <div class="hint-layout">
 <div class="card">
   <form method="POST" enctype="multipart/form-data">
@@ -95,4 +125,141 @@
   </div>
 
 </div>
+
+
+
+<script>
+(function () {
+  const WEEKS_PER_YEAR = 52;
+
+  function idxToYearWeek(idx) {
+    return { year: Math.floor((idx - 1) / WEEKS_PER_YEAR), week: ((idx - 1) % WEEKS_PER_YEAR) + 1 };
+  }
+
+  function countLevel(count, max) {
+    if (count === 0 || max === 0) return 0;
+    const ratio = count / max;
+    if (ratio < 0.15) return 1;
+    if (ratio < 0.40) return 2;
+    if (ratio < 0.70) return 3;
+    return 4;
+  }
+
+  function buildMap(records) {
+    const m = {};
+    let max = 0;
+    for (const r of records) {
+      m[r.idx] = r.count;
+      if (r.count > max) max = r.count;
+    }
+    return { m, max };
+  }
+
+  const tooltip = document.getElementById('heatmap-tooltip');
+
+  function renderGrid(containerId, records) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    if (!records || records.length === 0) {
+      container.innerHTML = '<span class="heatmap-status">No data</span>';
+      return;
+    }
+
+    const { m, max } = buildMap(records);
+    const allIdxs = Object.keys(m).map(Number);
+    const minIdx = Math.min(...allIdxs);
+    const maxIdx = Math.max(...allIdxs);
+
+    const { year: startYear } = idxToYearWeek(minIdx);
+    const { year: endYear }   = idxToYearWeek(maxIdx);
+
+    const labelRow = document.createElement('div');
+    labelRow.className = 'heatmap-week-labels';
+    for (let w = 1; w <= WEEKS_PER_YEAR; w++) {
+      const lbl = document.createElement('div');
+      lbl.className = 'heatmap-week-label';
+      lbl.textContent = (w % 4 === 1) ? w : '';
+      labelRow.appendChild(lbl);
+    }
+    container.appendChild(labelRow);
+
+    for (let yr = startYear; yr <= endYear; yr++) {
+      const row = document.createElement('div');
+      row.className = 'heatmap-row';
+
+      const yearLbl = document.createElement('div');
+      yearLbl.className = 'heatmap-year-label';
+      yearLbl.textContent = yr;
+      row.appendChild(yearLbl);
+
+      for (let wk = 1; wk <= WEEKS_PER_YEAR; wk++) {
+        const idx = yr * WEEKS_PER_YEAR + wk;
+        const cell = document.createElement('div');
+        cell.className = 'hm-cell';
+
+        if (idx < minIdx || idx > maxIdx) {
+          cell.dataset.empty = '1';
+          cell.dataset.level = '0';
+        } else {
+          const count = m[idx] || 0;
+          cell.dataset.level = countLevel(count, max);
+          cell.dataset.year  = yr;
+          cell.dataset.week  = wk;
+
+          cell.addEventListener('mouseenter', function (e) {
+            tooltip.textContent = `${yr} W${String(wk).padStart(2,'0')} — ${count.toLocaleString()} part${count !== 1 ? 's' : ''}`;
+            tooltip.style.display = 'block';
+          });
+          cell.addEventListener('mousemove', function (e) {
+            tooltip.style.left = (e.clientX + 12) + 'px';
+            tooltip.style.top  = (e.clientY - 28) + 'px';
+          });
+          cell.addEventListener('mouseleave', function () {
+            tooltip.style.display = 'none';
+          });
+        }
+        row.appendChild(cell);
+      }
+      container.appendChild(row);
+    }
+  }
+
+  function loadHeatmap(plant) {
+    const loading   = document.getElementById('heatmap-loading');
+    const container = document.getElementById('heatmap-container');
+    const errEl     = document.getElementById('heatmap-error');
+    const plantLbl  = document.getElementById('heatmap-plant-label');
+
+    loading.style.display   = 'block';
+    container.style.display = 'none';
+    errEl.style.display     = 'none';
+    plantLbl.textContent    = '(' + plant + ')';
+
+    fetch('/load/coverage/' + encodeURIComponent(plant.toLowerCase()))
+      .then(r => r.json())
+      .then(data => {
+        loading.style.display   = 'none';
+        container.style.display = 'block';
+        renderGrid('heatmap-wf', data.wf);
+        renderGrid('heatmap-cf', data.cf);
+      })
+      .catch(() => {
+        loading.style.display = 'none';
+        errEl.textContent     = 'Could not load coverage data.';
+        errEl.style.display   = 'block';
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const plantSelect = document.querySelector('select[name="plant_source"]');
+    const initial = plantSelect ? plantSelect.value : '{{ plant_sources[0] }}';
+    loadHeatmap(initial);
+    if (plantSelect) {
+      plantSelect.addEventListener('change', function () {
+        loadHeatmap(this.value);
+      });
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from app.reporting.data_quality import coverage_report
 from app.reporting.history_report import error_report
+from app.reporting.core import get_coverage_counts
 from app.core.parser import week_to_idx
 from app.core.loader import create_connection, consumption_to_sql, waterfall_to_sql, cost_to_sql, filter_SQL
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
@@ -185,6 +186,14 @@ def load():
 
     return render_template("load.html", active="load", result=result, error=error,
                            plant_sources=PLANT_SOURCES)
+
+
+@app.route("/load/coverage/<plant>")
+def load_coverage(plant):
+    if plant not in [p.lower() for p in PLANT_SOURCES]:
+        return jsonify({"error": "Unknown plant"}), 404
+    wf, cf = get_coverage_counts(plant)
+    return jsonify({"wf": wf, "cf": cf})
 
 
 # ── DATA / Explore ────────────────────────────────────────────────────────────

@@ -40,3 +40,28 @@ def get_wf_cf(plant):
 def merged_data(plant):
     wf, cf = get_wf_cf(plant)
     return wf.merge(cf, on=['part', pre['oi']], how='inner')
+
+
+def get_coverage_counts(plant):
+    """Return (wf_records, cf_records) — distinct part counts per orderidx for each table."""
+    plant_db = plant.strip().lower() + '.db'
+    try:
+        conn = sqlite3.connect(dirs['processed'] / plant_db)
+        wf = pd.read_sql_query(
+            "SELECT orderidx, COUNT(DISTINCT part) AS count "
+            "FROM waterfall_agg GROUP BY orderidx ORDER BY orderidx",
+            conn,
+        )
+        cf = pd.read_sql_query(
+            "SELECT orderidx, COUNT(DISTINCT part) AS count "
+            "FROM consumption GROUP BY orderidx ORDER BY orderidx",
+            conn,
+        )
+        conn.close()
+    except Exception:
+        return [], []
+
+    def to_records(df):
+        return [{"idx": int(r["orderidx"]), "count": int(r["count"])} for _, r in df.iterrows()]
+
+    return to_records(wf), to_records(cf)
