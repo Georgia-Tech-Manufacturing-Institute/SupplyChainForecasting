@@ -2,6 +2,9 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 import subprocess
 import os
 import sys
+import threading
+import uuid
+import time
 from datetime import datetime
 
 # Make the project root importable so app.* packages resolve
@@ -20,6 +23,92 @@ from app.prefixe import dirs, PLANT_SOURCES
 
 # lots of placeholder code in the routes, just have to retool to work with our specific scripts
 app = Flask(__name__)
+
+# ── training job state ────────────────────────────────────────────────────────
+_JOBS: dict = {}   # job_id → {stage, pct, message, done, error, result, started}
+
+_STAGES = {
+    'queued':      ('Queued',                  0),
+    'loading':     ('Loading data',            3),
+    'features':    ('Walk-forward features',   8),
+    'consumption': ('Consumption features',   68),
+    'merging':     ('Merging & filtering',    72),
+    'training_a':  ('Training Model A',       76),
+    'training_b':  ('Training Model B',       88),
+    'saving':      ('Saving model',           96),
+    'done':        ('Complete',              100),
+    'error':       ('Error',                   0),
+}
+
+def _run_training_job(job_id: str, params: dict):
+    job = _JOBS[job_id]
+
+    def report(stage: str, message: str = ''):
+        _, pct = _STAGES.get(stage, ('', 0))
+        job.update({'stage': stage, 'pct': pct,
+                    'message': message or _STAGES[stage][0]})
+
+    def wf_progress(step: int, total: int, msg: str):
+        pct_lo, pct_hi = _STAGES['features'][1], _STAGES['consumption'][1]
+        pct = pct_lo + int((pct_hi - pct_lo) * step / max(total, 1))
+        job.update({'stage': 'features', 'pct': pct, 'message': msg})
+
+    try:
+        report('loading', 'Connecting to database…')
+        conn = create_connection(plant=params['plant'])
+
+        report('loading', 'Reading SQL tables…')
+        df = build_training_dataset(
+            conn,
+            min_orderidx=params['min_oi'],
+            max_orderidx=params['max_oi'],
+            progress_cb=wf_progress,
+        )
+        conn.close()
+
+        if df.empty:
+            job.update({'error': 'No training data found for the specified date range.',
+                        'done': True, 'stage': 'error'})
+            return
+
+        report('consumption', f'Dataset ready — {len(df):,} rows')
+        report('merging',     'Filtering and finalising features…')
+
+        report('training_a', f'Fitting Model A (predqty > {1})…')
+        bundle = model_train(df, holdout_weeks=params['holdout'],
+                             plant=params['plant'])
+
+        report('training_b', 'Fitting Model B (predqty ≤ 1)…')
+
+        report('saving', 'Persisting model to disk…')
+        nickname = params['nickname']
+        if not nickname:
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            nickname = f"{params['plant']}_{ts}"
+
+        saved_path = save_model(bundle, nickname)
+        elapsed = round(time.time() - job['started'])
+
+        job.update({
+            'stage':   'done',
+            'pct':     100,
+            'message': f'Saved as {nickname}.pkl',
+            'result':  saved_path,
+            'elapsed': elapsed,
+            'done':    True,
+        })
+
+    except Exception as exc:
+        import traceback
+        job.update({
+            'stage':     'error',
+            'pct':       job.get('pct', 0),
+            'message':   str(exc),
+            'traceback': traceback.format_exc(),
+            'error':     str(exc),
+            'done':      True,
+        })
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 # use in other funcs, pass in all command line args for whatever function needs to be executed
@@ -211,46 +300,45 @@ def predict():
 
 
 # ── MODEL / Retrain ───────────────────────────────────────────────────────────
-@app.route("/retrain", methods=["GET", "POST"])
+@app.route("/retrain", methods=["GET"])
 def retrain():
-    result = None
-    error  = None
-    models = _list_models()
+    return render_template("retrain.html", active="retrain",
+                           models=_list_models(), plant_sources=PLANT_SOURCES)
 
-    if request.method == "POST":
-        earliest_order = request.form.get("earliest_order_date", "").strip()
-        latest_order   = request.form.get("latest_order_date",   "").strip()
-        nickname       = request.form.get("model_nickname", "").strip()
-        holdout_str    = request.form.get("holdout_weeks", "0").strip()
-        plant          = request.form.get("plant_source", "arlington").strip().lower()
 
-        try:
-            min_oi = parse_week_to_idx(earliest_order) if earliest_order else None
-            max_oi = parse_week_to_idx(latest_order)   if latest_order   else None
-            holdout = int(holdout_str) if holdout_str else 0
+@app.route("/retrain/start", methods=["POST"])
+def retrain_start():
+    earliest_order = request.form.get("earliest_order_date", "").strip()
+    latest_order   = request.form.get("latest_order_date",   "").strip()
+    try:
+        params = {
+            'plant':    request.form.get("plant_source", "arlington").strip().lower(),
+            'min_oi':   parse_week_to_idx(earliest_order) if earliest_order else None,
+            'max_oi':   parse_week_to_idx(latest_order)   if latest_order   else None,
+            'holdout':  int(request.form.get("holdout_weeks", "0") or 0),
+            'nickname': request.form.get("model_nickname", "").strip(),
+        }
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 400
 
-            conn    = create_connection(plant=plant)
-            df      = build_training_dataset(conn, min_orderidx=min_oi,
-                                             max_orderidx=max_oi)
-            conn.close()
+    job_id = uuid.uuid4().hex[:8]
+    _JOBS[job_id] = {
+        'stage': 'queued', 'pct': 0, 'message': 'Queued…',
+        'done': False, 'error': None, 'result': None,
+        'started': time.time(), 'elapsed': None,
+    }
+    threading.Thread(target=_run_training_job, args=(job_id, params),
+                     daemon=True).start()
+    return jsonify({'job_id': job_id})
 
-            if df.empty:
-                error = "No training data found for the specified date range."
-            else:
-                bundle = model_train(df, holdout_weeks=holdout)
 
-                if not nickname:
-                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    nickname = f"{plant}_{ts}"
-
-                saved_path = save_model(bundle, nickname)
-                result = saved_path
-
-        except Exception as e:
-            error = str(e)
-
-    return render_template("retrain.html", active="retrain", models=models,
-                           plant_sources=PLANT_SOURCES, result=result, error=error)
+@app.route("/retrain/status/<job_id>")
+def retrain_status(job_id):
+    job = _JOBS.get(job_id)
+    if job is None:
+        return jsonify({'error': 'Job not found'}), 404
+    elapsed = round(time.time() - job['started']) if not job['done'] else job.get('elapsed', 0)
+    return jsonify({**job, 'elapsed': elapsed})
 
 
 # ── MODEL / Evaluate ──────────────────────────────────────────────────────────

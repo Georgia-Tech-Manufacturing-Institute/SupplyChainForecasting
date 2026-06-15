@@ -95,15 +95,13 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     train_hi   = train_idx & (df_valid[pq] > N)
     X_tr_A, y_tr_A = X_valid[train_hi], y_valid[train_hi]
     mA = HistGradientBoostingRegressor(loss=loss, l2_regularization=L2)
-    mA.fit(X_tr_A, y_tr_A,
-           sample_weight=1 / (X_tr_A['lookahead_wk'].abs() + 2))
+    mA.fit(X_tr_A, y_tr_A)
 
     # Model B: predqty <= N
     train_lo   = train_idx & (df_valid[pq] <= N)
     X_tr_B, y_tr_B = X_valid[train_lo], y_valid[train_lo]
     mB = HistGradientBoostingRegressor(loss=loss, l2_regularization=L2)
-    mB.fit(X_tr_B, y_tr_B,
-           sample_weight=1 / (X_tr_B['lookahead_wk'].abs() + 2))
+    mB.fit(X_tr_B, y_tr_B)
 
     bundle = {
         'plant': plant,
