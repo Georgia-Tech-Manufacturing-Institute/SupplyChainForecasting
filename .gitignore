@@ -1,14 +1,18 @@
 
+
 # Ignore data files 
 *.csv
-*.prn
-*.txt
 *.parquet
 *.db
+*.prn
+*.txt
 *.xlsx
 *.xls
 *.xlsm
+*.pptx
+*.ppt
 *.DS_Store
+.nikki
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
