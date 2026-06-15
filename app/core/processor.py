@@ -44,9 +44,6 @@ def QtyVolumes(df, cost_col='Amt1',
     df.loc[:, "VolumeError"] = df[consum_target] - df[pred_target]
     return df
 
-# ============ PROCESS Prediction FILES ============ 
-
-
 
 # ============ PARSE CONSUMPTION FILES ============ 
 
@@ -100,22 +97,6 @@ def stateParse(file):
             if state=='footer':
                 continue
     return filedata
-
-
-def check(consump_df, wf_data):
-    # 
-    all_consumption_parts = consump_df.Part.unique()
-    all_waterfall_parts = wf_data.Part.unique()
-
-    processed_consump = processConsumption(consump_df)
-    proc_consump_parts = processed_consump.Part.unique()
-    print(len(all_consumption_parts),
-        len(proc_consump_parts),
-        len(all_waterfall_parts))
-
-    print(set(all_waterfall_parts) - set(all_consumption_parts))
-    print(set(all_waterfall_parts) - set(proc_consump_parts))
-#   both should be empty
 
 def forecast_age(df):
     has_pred = df[~df.PredYear.isna()]

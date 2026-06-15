@@ -6,6 +6,11 @@ from datetime import date
 from app.prefixe import pre, dirs, Path
 import sqlite3
 
+def create_connection(plant='arlington'):
+    prep = plant.strip().lower() + '.db'
+    conn = sqlite3.connect(dirs['processed'] / prep)
+    sql_setup(conn)
+    return conn
 
 def read_waterfall_week(year=None, week=None, idx=None, proc_dir=Path('data/processed/Waterfall')):
     '''
@@ -175,9 +180,6 @@ def waterfall_to_sql(conn, waterfall_dir, overwrite=False):
         update_loaded_files(conn, filename, 'waterfall', widx)
         d_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
         print(f"          Changed {d_rows} rows in waterfall_agg")
-
-def cost_to_sql(conn, cost_map):
-    load_to_sql(conn, 'cost', cost_map) 
 
 def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
     ''' keeps log of week info for loaded files
