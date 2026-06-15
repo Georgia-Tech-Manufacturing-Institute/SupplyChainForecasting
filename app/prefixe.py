@@ -5,6 +5,7 @@ APP_DIR = Path(__file__).resolve().parent
 
 dirs = {
     'app': APP_DIR,
+    'ext_data': APP_DIR.resolve().parent / 'data',
     'data': APP_DIR / "data",
     'reports': APP_DIR / "reports",
     'figures': APP_DIR / 'figures'
@@ -12,11 +13,13 @@ dirs = {
 
 dirs.update({
     'raw': dirs['data'] / 'raw',
-    'processed': dirs['data'] / 'processed'
+    'processed': dirs['data'] / 'processed',
+    'ext_processed': dirs['ext_data'] / 'processed'
+
              })
 dirs.update({
     'cost': dirs['raw'] / 'Cost.txt',
-    'sql': dirs['data'] / 'processed_data.db'
+    'saved_models': APP_DIR / 'models' / 'saved_models',
     })
 
 
