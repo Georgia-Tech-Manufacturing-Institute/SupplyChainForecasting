@@ -6,7 +6,7 @@
   <span class="icon">📋</span> Reports
 </div>
 
-<div style="display:flex; gap:1.5rem; align-items:flex-start;">
+<div class="hint-layout">
 
 <div class="card" style="flex:1; min-width:0;">
   <form method="POST">
@@ -47,10 +47,15 @@
           </td>
         </tr>
         <tr>
-          <th class="row-label">Part Number Starts With</th>
+          <th class="row-label">Part Starts With <br>
+        <small class="help-text">
+          Filter parts based on part number.
+        </small>
+
+          </th>
           <td>
             <input type="text" name="part_prefix"
-                   placeholder="e.g. AB-"
+                   placeholder="e.g. 853"
                    value="{{ request.form.get('part_prefix', '') }}" />
           </td>
         </tr>

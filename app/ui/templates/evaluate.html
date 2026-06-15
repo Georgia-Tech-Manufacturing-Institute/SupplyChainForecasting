@@ -30,14 +30,14 @@
         <tr>
           <th class="row-label">Evaluation Start Date</th>
           <td>
-            <input type="date" name="eval_start"
+            <input type="week" name="eval_start"
                    value="{{ request.form.get('eval_start', '') }}" />
           </td>
         </tr>
         <tr>
           <th class="row-label">Evaluation End Date</th>
           <td>
-            <input type="date" name="eval_end"
+            <input type="week" name="eval_end"
                    value="{{ request.form.get('eval_end', '') }}" />
           </td>
         </tr>
