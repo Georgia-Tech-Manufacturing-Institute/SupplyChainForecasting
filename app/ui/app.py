@@ -196,14 +196,6 @@ def load_coverage(plant):
     return jsonify({"wf": wf, "cf": cf})
 
 
-# ── DATA / Explore ────────────────────────────────────────────────────────────
-# Supposed to be for the Github style sorta heatmap for data coverage
-# we not there yet but we gon get there
-@app.route("/explore", methods=["GET", "POST"])
-def explore():
-    return render_template("explore.html", active="explore", result=None, error=None, chart_html=None)
-
-
 # ── DATA / Reports ────────────────────────────────────────────────────────────
 @app.route("/reports", methods=["GET", "POST"])
 def reports():
