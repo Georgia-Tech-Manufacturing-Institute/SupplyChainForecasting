@@ -26,25 +26,6 @@ def timeFilter(df, year):
     filtdf = df[df.OrderYear == 2025]
     data_2025 = data_2025.sort_values(['OrderYear', 'OrderWeek'])
 
-
-def predictionPrep(df):
-    # Function for processing the 
-    return df
-
-def QtyVolumes(df, cost_col='Amt1', 
-               consum_col = 'ConsumQty',
-               pred_col = 'RelQty',
-               consum_target = 'ConsumVol',
-               pred_target='RelVol'):
-    asp = df[cost_col]
-    #df = df.iloc[:, :10]
-    df.loc[:,'Qty_Error'] = df[consum_col]- df[pred_col]
-    df.loc[:, pred_target] = df[pred_col] * asp
-    df.loc[:, consum_target] = df[consum_col] * asp
-    df.loc[:, "VolumeError"] = df[consum_target] - df[pred_target]
-    return df
-
-
 # ============ PARSE CONSUMPTION FILES ============ 
 
 def delimited_split(s, header_length, n=9):
