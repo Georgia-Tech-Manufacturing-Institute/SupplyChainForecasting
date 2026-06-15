@@ -7,10 +7,13 @@
 *.prn
 *.txt
 *.xlsx
+*.pkl
 *.xls
 *.xlsm
 *.pptx
 *.ppt
+*.pkl
+*.ipynb
 *.DS_Store
 .nikki
 

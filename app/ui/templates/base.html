@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Forecast Tool{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<header>
+  <h1>Forecast Tool</h1>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="nav-section">
+      <div class="nav-section-label">Data</div>
+      <a href="{{ url_for('load') }}"    class="nav-item {% if active=='load'    %}active{% endif %}">Load</a>
+      <!--<a href="{{ url_for('explore') }}" class="nav-item {% if active=='explore' %}active{% endif %}">Explore</a>--->
+      <a href="{{ url_for('reports') }}" class="nav-item {% if active=='reports' %}active{% endif %}">Reports</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Model</div>
+      <a href="{{ url_for('retrain') }}"  class="nav-item {% if active=='retrain'  %}active{% endif %}">Train</a>
+      <a href="{{ url_for('predict') }}"  class="nav-item {% if active=='predict'  %}active{% endif %}">Predict</a>
+      <a href="{{ url_for('evaluate') }}" class="nav-item {% if active=='evaluate' %}active{% endif %}">Evaluate</a>
+    </div>
+  </aside>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}Train — Forecast Tool{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/train.css') }}" />
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">🔄</span> Train
+</div>
+
+<div style="display:flex; gap:1.5rem; align-items:flex-start;">
+
+  <!-- ── form ──────────────────────────────────────────────── -->
+  <div class="card" style="flex:1; min-width:340px;">
+    <form id="retrain-form">
+      <table class="form-table">
+        <thead>
+          <tr><th colspan="2">Train a custom predictive model with most recent data</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th class="row-label">Plant Source</th>
+            <td>
+              <select name="plant_source">
+                {% for p in plant_sources %}
+                  <option value="{{ p }}">{{ p }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+
+          <tr>
+            <th class="row-label" colspan="2"
+                style="background:var(--bg); font-size:12px; font-weight:400;
+                       color:var(--text-muted); padding:8px 16px;">
+              Order Date Range
+            </th>
+          </tr>
+          <tr>
+            <th class="row-label">Earliest Order Date</th>
+            <td><input type="week" name="earliest_order_date" id="earliest_order_date" /></td>
+          </tr>
+          <tr>
+            <th class="row-label">Latest Order Date</th>
+            <td><input type="week" name="latest_order_date" id="latest_order_date" /></td>
+          </tr>
+
+          <tr>
+            <th class="row-label">Holdout Weeks
+            <div class="help-text">Choose the number of weeks to omit from training to check performance </div>
+            </th>
+            <td>
+              <input type="number" name="holdout_weeks" min="0" max="52" value="0"
+                     style="max-width:80px;" />
+              <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">
+                0 = use all data
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <th class="row-label">Model Name</th>
+            <td>
+              <input type="text" name="model_nickname" id="model_nickname"
+                     placeholder="auto-generated from dates" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="action-row">
+        <button type="submit" class="btn-run" id="start-btn">Start Training</button>
+        <span id="start-error" class="error-banner" style="display:none;"></span>
+      </div>
+    </form>
+
+    <!-- ── progress panel (shown after submit) ──────────────── -->
+    <div id="progress-panel">
+
+      <div class="stage-row" id="stage-row">
+        <!-- built by JS -->
+      </div>
+
+      <div class="bar-wrap">
+        <div class="bar-fill" id="bar-fill"></div>
+      </div>
+
+      <div class="status-line">
+        <span id="status-msg">Starting…</span>
+        <span class="status-timer" id="status-timer">0s</span>
+      </div>
+
+      <div class="train-success" id="train-success">
+        ✔ Training complete.
+        <code id="result-path"></code>
+      </div>
+      <div class="train-fail" id="train-fail">
+        ✖ Training failed.
+        <code id="error-msg"></code>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── sidebar ───────────────────────────────────────────── -->
+  <div class="helper-sidebar">
+    <div class="helper-description">
+      <div class="desc-title">How training works</div>
+      <div id="desc-body" style="font-size:13px; line-height:1.7;">
+        <p>Training runs in the background so the page stays responsive. Four stages:</p>
+        <ol style="margin:6px 0 0 16px; padding:0;">
+          <li><b>Load</b> — read waterfall &amp; consumption from the database</li>
+          <li><b>Features</b> — walk-forward loop over all prediction weeks <em>(slowest step)</em></li>
+          <li><b>Train</b> — fit predictive models on the prepared data</li>
+          <li><b>Save</b> — write <code>.pkl</code> to <code>saved_models/</code></li>
+        </ol>
+        <p style="margin-top:8px; color:var(--text-muted);">Typical runtime: 2–5 min.</p>
+      </div>
+    </div>
+
+    <div class="helper-description" style="margin-top:1rem;">
+      <div class="desc-title">Saved models</div>
+      <div>
+        {% if models %}
+          <ul style="margin:6px 0 0 16px; padding:0; font-size:13px; line-height:1.9;">
+            {% for m in models %}<li>{{ m }}</li>{% endfor %}
+          </ul>
+        {% else %}
+          <p style="font-size:13px; color:var(--text-muted);">No saved models yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  /* ── nickname suggestion ─────────────────────────────────── */
+  const nicknameEl = document.getElementById('model_nickname');
+  let userEdited = nicknameEl.value.length > 0;
+  nicknameEl.addEventListener('input', () => { userEdited = true; });
+
+  ['earliest_order_date', 'latest_order_date'].forEach(id => {
+    document.getElementById(id).addEventListener('change', function () {
+      if (userEdited) return;
+      const eo = document.getElementById('earliest_order_date').value;
+      const lo = document.getElementById('latest_order_date').value;
+      const parts = [];
+      if (eo) parts.push(eo.replace('-W', 'w'));
+      if (lo) parts.push(lo.replace('-W', 'w'));
+      nicknameEl.value = parts.length ? 'model_' + parts.join('_') : '';
+    });
+  });
+
+  /* ── stage pipeline ──────────────────────────────────────── */
+  const STAGES = [
+    { key: 'loading',  label: 'Load' },
+    { key: 'features', label: 'Features' },
+    { key: 'training', label: 'Train' },
+    { key: 'saving',   label: 'Save' },
+    { key: 'done',     label: 'Done' },
+  ];
+  const STAGE_KEYS = STAGES.map(s => s.key);
+
+  function buildPipeline() {
+    const row = document.getElementById('stage-row');
+    row.innerHTML = '';
+    STAGES.forEach((s, i) => {
+      const pip = document.createElement('div');
+      pip.className = 'stage-pip';
+      pip.id = 'pip-' + s.key;
+      pip.innerHTML = `<div class="pip-circle"></div>
+                       <div class="pip-label">${s.label}</div>`;
+      row.appendChild(pip);
+      if (i < STAGES.length - 1) {
+        const conn = document.createElement('div');
+        conn.className = 'stage-connector';
+        conn.id = 'conn-' + s.key;
+        row.appendChild(conn);
+      }
+    });
+  }
+
+  const STAGE_KEY_MAP = { merging: 'training', training_a: 'training', training_b: 'training' };
+
+  function paintStages(currentKey, isError) {
+    currentKey = STAGE_KEY_MAP[currentKey] || currentKey;
+    const ci = STAGE_KEYS.indexOf(currentKey);
+    const allDone = currentKey === 'done';
+    STAGES.forEach((s, i) => {
+      const pip = document.getElementById('pip-' + s.key);
+      if (!pip) return;
+      pip.classList.remove('pip-done', 'pip-active', 'pip-error');
+      const circle = pip.querySelector('.pip-circle');
+      circle.textContent = '';
+
+      if (isError && i === ci) {
+        pip.classList.add('pip-error');
+        circle.textContent = '✕';
+      } else if (allDone || i < ci) {
+        pip.classList.add('pip-done');
+        circle.textContent = '✓';
+      } else if (i === ci) {
+        pip.classList.add('pip-active');
+      }
+    });
+  }
+
+  function fmtTime(s) {
+    return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  }
+
+  /* ── job polling ─────────────────────────────────────────── */
+  let pollTimer = null;
+
+  function startPolling(jobId) {
+    let lastStage = '';
+    pollTimer = setInterval(async () => {
+      let data;
+      try {
+        const resp = await fetch('/retrain/status/' + jobId);
+        data = await resp.json();
+      } catch (_) { return; }   // network hiccup — keep polling
+
+      // bar
+      const bar = document.getElementById('bar-fill');
+      bar.style.width = Math.min(data.pct, 100) + '%';
+      bar.className = 'bar-fill' +
+        (data.stage === 'done' ? ' done' : data.stage === 'error' ? ' error' : '');
+
+      // text
+      document.getElementById('status-msg').textContent   = data.message || '';
+      document.getElementById('status-timer').textContent = fmtTime(data.elapsed || 0);
+
+      // pips
+      if (data.stage !== lastStage) {
+        paintStages(data.stage, data.stage === 'error');
+        lastStage = data.stage;
+      }
+
+      if (data.done) {
+        clearInterval(pollTimer);
+        document.getElementById('start-btn').disabled    = false;
+        document.getElementById('start-btn').textContent = 'Start Training';
+
+        if (data.result) {
+          document.getElementById('result-path').textContent = data.result;
+          document.getElementById('train-success').style.display = 'block';
+        }
+        if (data.error && data.stage === 'error') {
+          document.getElementById('error-msg').textContent = data.error;
+          document.getElementById('train-fail').style.display = 'block';
+        }
+      }
+    }, 1500);
+  }
+
+  /* ── form submit ─────────────────────────────────────────── */
+  document.getElementById('retrain-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    // reset UI
+    ['train-success', 'train-fail'].forEach(id =>
+      document.getElementById(id).style.display = 'none');
+    document.getElementById('start-error').style.display = 'none';
+    document.getElementById('bar-fill').style.width   = '0%';
+    document.getElementById('bar-fill').className     = 'bar-fill';
+    document.getElementById('status-msg').textContent = 'Starting…';
+    document.getElementById('status-timer').textContent = '0s';
+
+    buildPipeline();
+    paintStages('loading', false);
+
+    document.getElementById('progress-panel').style.display = 'block';
+    document.getElementById('start-btn').disabled    = true;
+    document.getElementById('start-btn').textContent = 'Training…';
+
+    if (pollTimer) clearInterval(pollTimer);
+
+    try {
+      const fd   = new FormData(this);
+      const resp = await fetch('/retrain/start', { method: 'POST', body: fd });
+      const data = await resp.json();
+
+      if (data.error) {
+        document.getElementById('start-error').textContent  = data.error;
+        document.getElementById('start-error').style.display = 'inline';
+        document.getElementById('start-btn').disabled    = false;
+        document.getElementById('start-btn').textContent = 'Start Training';
+        return;
+      }
+      startPolling(data.job_id);
+    } catch (err) {
+      document.getElementById('start-error').textContent  = 'Could not start job: ' + err;
+      document.getElementById('start-error').style.display = 'inline';
+      document.getElementById('start-btn').disabled    = false;
+      document.getElementById('start-btn').textContent = 'Start Training';
+    }
+  });
+})();
+</script>
+{% endblock %}

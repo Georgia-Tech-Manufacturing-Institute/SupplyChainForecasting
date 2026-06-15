@@ -26,28 +26,6 @@ def timeFilter(df, year):
     filtdf = df[df.OrderYear == 2025]
     data_2025 = data_2025.sort_values(['OrderYear', 'OrderWeek'])
 
-
-def predictionPrep(df):
-    # Function for processing the 
-    return df
-
-def QtyVolumes(df, cost_col='Amt1', 
-               consum_col = 'ConsumQty',
-               pred_col = 'RelQty',
-               consum_target = 'ConsumVol',
-               pred_target='RelVol'):
-    asp = df[cost_col]
-    #df = df.iloc[:, :10]
-    df.loc[:,'Qty_Error'] = df[consum_col]- df[pred_col]
-    df.loc[:, pred_target] = df[pred_col] * asp
-    df.loc[:, consum_target] = df[consum_col] * asp
-    df.loc[:, "VolumeError"] = df[consum_target] - df[pred_target]
-    return df
-
-# ============ PROCESS Prediction FILES ============ 
-
-
-
 # ============ PARSE CONSUMPTION FILES ============ 
 
 def delimited_split(s, header_length, n=9):
@@ -100,22 +78,6 @@ def stateParse(file):
             if state=='footer':
                 continue
     return filedata
-
-
-def check(consump_df, wf_data):
-    # 
-    all_consumption_parts = consump_df.Part.unique()
-    all_waterfall_parts = wf_data.Part.unique()
-
-    processed_consump = processConsumption(consump_df)
-    proc_consump_parts = processed_consump.Part.unique()
-    print(len(all_consumption_parts),
-        len(proc_consump_parts),
-        len(all_waterfall_parts))
-
-    print(set(all_waterfall_parts) - set(all_consumption_parts))
-    print(set(all_waterfall_parts) - set(proc_consump_parts))
-#   both should be empty
 
 def forecast_age(df):
     has_pred = df[~df.PredYear.isna()]

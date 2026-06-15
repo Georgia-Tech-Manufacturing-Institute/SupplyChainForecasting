@@ -1,0 +1,17 @@
+services:
+  forecast-tool:
+    build: .
+    ports:
+      - "4999:4999"         # localhost:5000 → container:5000
+    volumes:
+      # mount local data/output folders into the container so backend scripts can read input files and write results back to the host.
+      # left side  = path on YOUR personal machine  (needs updates)
+      # right side = path the container sees (filepaths called by Flask routes)
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+      - ./backend:/app/backend
+    environment:
+      - FLASK_ENV=production
+      # - SECRET_KEY=   # override with a real secret - irrelevant short term, used if we ever fleshed this out to a multi-user system (used to sign session cookies)
+    restart: unless-stopped

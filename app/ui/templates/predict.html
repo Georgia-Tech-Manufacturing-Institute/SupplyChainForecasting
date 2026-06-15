@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Predict — Forecast Tool{% endblock %}
+
+{% block extra_head %}
+<style>
+.pred-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pred-table th { background: var(--surface); border-bottom: 2px solid var(--border);
+                 padding: 6px 10px; text-align: left; font-weight: 600; }
+.pred-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
+.pred-table tr:hover td { background: var(--surface); }
+.result-count { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
+.table-scroll  { max-height: 480px; overflow-y: auto; margin-top: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">🎯</span> Predict
+</div>
+
+<div class="hint-layout">
+
+<div class="card">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr><th colspan="2">Make predictions on future ordering</th></tr>
+      </thead>
+
+      <tbody>
+          <tr>
+          <th>Choose Model:</th>
+          <td>
+            <select name="model" style="max-width:260px;">
+              {% for m in models %}
+                <option value="{{ m }}"
+                  {% if request.form.get('model', models[0] if models else '') == m %}selected{% endif %}>
+                  {{ m }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Plant Source</th>
+          <td>
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <!-- <tr>
+          <th class="row-label">Part Prefix Filter</th>
+          <td>
+            <input type="text" name="part_number"
+                   placeholder="e.g. 240  (leave blank for all parts)"
+                   value="{{ request.form.get('part_number', '') }}" />
+          </td>
+        </tr> -->
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Make Predictions</button>
+
+      {% if error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<div class="helper-sidebar">
+  <div id="static-description" class="report-description">
+    <div id="page-info"  class="desc-title"> About predictions</div>
+    <div id="page-desc">This page uses a previously trained model to create new predictions. </div>
+  </div>
+</div>
+</div>
+
+
+</div> <!---End Hint Layout --->
+
+
+{% if table_html %}
+<div class="card" style="margin-top:1.5rem;">
+  <div class="result-count">
+    Showing first 200 of <strong>{{ row_count }}</strong> rows &nbsp;|&nbsp;
+    {% if result %}
+      Full results saved to <code>{{ result }}</code>
+    {% endif %}
+  </div>
+  <div class="table-scroll">
+    {{ table_html | safe }}
+  </div>
+</div>
+{% elif result and not error %}
+
+<div class="card" style="margin-top:1.5rem;">
+  <div class="result-banner">
+    Predictions saved to<br/>
+    <span class="preview-path">{{ result }}</span>
+  </div>
+</div>
+
+ 
+{% endif %}
+
+{% endblock %}

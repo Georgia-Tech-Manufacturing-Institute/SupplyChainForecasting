@@ -185,10 +185,13 @@ def release_gp_variation(agg_frame, col, unit=None):
         ], axis=1).reset_index()
     return release_accuracy
 
-def waterfall_features(frame, extend=True):
+def waterfall_features(frame, extend=True, progress_cb=None):
+    """
+    progress_cb(step, total, message) — called during the walk-forward loop so
+    callers can report progress to a UI.  step is 0-indexed, total is loop length.
+    """
     df = frame.copy()
     df = df.sort_values(['part', oi, pi]).reset_index(drop=True)
-    # Prior guess (nonzero, based on waterfall)
     df['lookahead_wk'] = df.orderidx - df.predidx
     df['predqty_lag_qty'] = df.groupby("part").shift(1).predqty
     df['lag_ratio'] = df.predqty_lag_qty/(df.predqty+1)
@@ -196,28 +199,28 @@ def waterfall_features(frame, extend=True):
         df = pd.concat([df, extend_predictions(df)],axis=0)
         df = df.sort_values(['part', oi, pi])
     df = grouped_column_statistics(df, value_col=pq, sort_col=pi,
-                                   prefix=pq, unit='qty' )
-    
-    # PN Specific history
-    # highest ever predicted value (for a given week) for that 
+                                   prefix=pq, unit='qty')
+
     df['predqqty_max_qty'] = df.groupby("part")["predqty"].cummax()
 
-    # Simultaneous demand / walk forward stats
-    for idx in sorted(df.predidx.unique()):
-        known_info = df[df[pi]<=idx] # get the most recent order info per date
+    # Walk-forward simultaneous demand (the most expensive loop)
+    unique_idxs = sorted(df.predidx.unique())
+    n_idxs = len(unique_idxs)
+    for step, idx in enumerate(unique_idxs):
+        if progress_cb:
+            progress_cb(step, n_idxs, f'Walk-forward features: week {step + 1} / {n_idxs}')
+        known_info = df[df[pi] <= idx]
         latest_info = known_info.loc[known_info.groupby(['part', oi])[pi].idxmax()]
         mask = df[pi] == idx
         simultaneous_demand = latest_info.groupby([oi])[pq].count()
         df.loc[mask, 'orderidx_part_count'] = df.loc[mask, oi].map(simultaneous_demand)
 
-    # Rolling statistic - compute after adding in zeros
-    # df = roll_statistics(df, target_col='predqty', n=2, func=['sum'])
-    # df = roll_statistics(df, target_col='predqty', n=3, func=['sum'])
-
-    # qty change from prior_order
-    #df = pd.concat([df, id_features(df.part, 8)],axis=1)
-
     df["predqty_1wkdiff_qty"] = df.groupby(["part", oi])[pq].diff()
+
+    df = prediction_maturity_features(df)
+    df = relative_magnitude_features(df)
+    df = seasonal_index_features(df, oi)
+    df = seasonal_index_features(df, pi)
     return df
 
 def normalize_qty_features(frame, div_col = 'predqqty_max_qty'):
@@ -236,15 +239,78 @@ def n_prior_pred(wf, n_weeks):
 def consumption_features(frame):
     cf = frame.copy()
     # Create features based on consumption data - for each order date, what was the context of prior ordering behavior
-    newcf = cf[["part", oi, oq]]
-    for i in range(2,4): # rolling is okay since we have all data every map. 
+    newcf = cf[["part", oi, oq]].sort_values(["part", oi])
+    for i in range(2,4): # rolling is okay since we have all data every map.
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
-    # Prior order 
+    # Prior order
     newcf[f'part_lag1_qty'] = newcf.groupby("part").shift(1)[oq]
     newcf[f'part_lag2_qty'] = newcf.groupby("part").shift(2)[oq]
-    # # Difference from prior order
-    # newcf['='] = newcf.groupby("part").Orderidx.diff()
+    # Time between orders: captures ordering regularity
+    newcf['order_gap_wk'] = newcf.groupby("part")[oi].diff()
+    newcf['order_gap_mean_wk'] = (
+        newcf.groupby("part")['order_gap_wk']
+        .transform(lambda s: s.expanding().mean())
+    )
+    newcf['order_gap_std_wk'] = (
+        newcf.groupby("part")['order_gap_wk']
+        .transform(lambda s: s.expanding().std())
+    )
     return newcf
+
+
+def prediction_maturity_features(df):
+    """How far along in the prediction lifecycle is each part/order pair?"""
+    df = df.copy()
+    # Number of prior predictions issued for this order (0-indexed: 0 = first prediction)
+    df['n_prior_preds'] = df.groupby(['part', oi]).cumcount()
+    # Predqty at first prediction for this order
+    first_predqty = df.groupby(['part', oi])[pq].transform('first')
+    df['first_predqty'] = first_predqty
+    # Total drift from the initial prediction
+    df['predqty_total_drift'] = df[pq] - first_predqty
+    # Ratio of current prediction to the first prediction (1.0 = unchanged)
+    df['first_to_current_ratio'] = df[pq] / (first_predqty + 1)
+    return df
+
+
+def relative_magnitude_features(df):
+    """Predqty relative to this part's historical distribution (requires expanding stats already computed)."""
+    df = df.copy()
+    df['predqty_vs_mean_ratio'] = df[pq] / (df['predqty_mean_qty'] + 1)
+    df['predqty_vs_max_ratio'] = df[pq] / (df['predqqty_max_qty'] + 1)
+    return df
+
+
+def seasonal_index_features(df, idx_col):
+    """Week-of-year and fiscal quarter derived from a week-index column."""
+    df = df.copy()
+    week_of_year = df[idx_col] % 52
+    df[f'{idx_col}_woy'] = week_of_year
+    df[f'{idx_col}_quarter'] = week_of_year // 13
+    return df
+
+
+def demand_share_features(df):
+    """Part's predicted qty as a fraction of total demand in the same order week.
+    Computed walk-forward so only info available at prediction time is used."""
+    df = df.copy()
+    df['demand_share'] = np.nan
+    df['total_orderidx_demand'] = np.nan
+
+    for idx in sorted(df[pi].unique()):
+        known = df[df[pi] <= idx]
+        latest = known.loc[known.groupby(['part', oi])[pi].idxmax()]
+        mask = df[pi] == idx
+
+        total = latest.groupby(oi)[pq].sum().rename('total')
+        per_part = latest.set_index([oi, 'part'])[pq]
+        total_mapped = df.loc[mask, oi].map(total)
+
+        df.loc[mask, 'total_orderidx_demand'] = total_mapped.values
+        df.loc[mask, 'demand_share'] = (
+            df.loc[mask, pq].values / (total_mapped.values + 1)
+        )
+    return df
 
 def acc_features(real_data):
     # merged: ordering aligned dataframe

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Reports — Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">📋</span> Reports
+</div>
+
+<div class="hint-layout">
+
+<div class="card" style="flex:1; min-width:0;">
+  <form method="POST">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th colspan="2">Generate Data Reports</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label">Plant Source</th>
+          <td>
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Report Type
+          </th>
+          <td>
+            <select name="report_type" id="report_type_select">
+              {% set types = ["OrderAccuracy",  "DataCoverage"] %}
+              {% for t in types %}
+                <option value="{{ t }}"
+                  {% if request.form.get('report_type', 'OrderAccuracy') == t %}selected{% endif %}>
+                  {{ t }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Start Week</th>
+          <td>
+            <input type="week" name="week_start"
+                   value="{{ request.form.get('week_start', '2024-W40') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">End Week</th>
+          <td>
+            <input type="week" name="week_end"
+                   value="{{ request.form.get('week_end', current_week) }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Part Starts With <br>
+        <small class="help-text">
+          Filter parts based on part number.
+        </small>
+
+          </th>
+          <td>
+            <input type="text" name="part_prefix"
+                   placeholder="e.g. 853"
+                   value="{{ request.form.get('part_prefix', '') }}" />
+          </td>
+        </tr>
+        <tr id="lookahead-row">
+          <th class="row-label">Max. Lookahead (Weeks)
+          <div class="help-text">Only include predictions that are within a certain number of weeks of ordering. </div>
+          </th>
+          <td>
+            <input type="number" name="max_lookahead"
+                   value="{{ request.form.get('lookahead', '') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Save to file</th>
+          <td>
+            <label>
+              <input type="checkbox"
+                    id="save_to_file"
+                    name="save_to_file"
+                    value="1"
+                    {% if request.form.get('save_to_file') %}checked{% endif %}>
+              Save report as XLSX
+            </label>
+          </td>
+        </tr>
+
+        <tr id="file-path-row"
+            {% if not request.form.get('save_to_file') %}style="display:none;"{% endif %}>
+          <th class="row-label">File Name</th>
+          <td>
+            <input type="text"
+                  name="file_path"
+                  placeholder="report.xlsx"
+                  value="{{ request.form.get('file_path', '') }}">
+          </td>
+        </tr>      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Generate Report</button>
+
+      {% if result %}
+        <div class="result-banner">
+          ✔ Report saved to<br/>
+          <span class="preview-path">{{ result }}</span>
+          <div class="xlsx-hint">📊 Excel file (.xlsx)</div>
+        </div>
+      {% elif error %}
+        <span class="error-banner">✖ {{ error }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<div class="helper-sidebar">
+  <div id="static-description" class="report-description">
+    <div id="page-info"  class="desc-title"> Reports</div>
+    <div id="page-desc">This page generates data descriptors not related to a specific predictive model. This exclusively concerns information as provided to the system. Choose a report type to learn more. </div>
+  </div>
+  <div id="report-description" class="report-description">
+    <div id="dynamic-report-title" class="desc-title"></div>
+    <div id="dynamic-report-body"></div>
+  </div>
+</div>
+</div>
+
+
+{% if chart_html %}
+<div class="card" style="overflow-x: auto; margin-top: 1rem;">
+  {{ chart_html | safe }}
+</div>
+{% endif %}
+
+
+<script>
+const REPORT_DESCRIPTIONS = {
+  OrderAccuracy: {
+    title: "Order Accuracy",
+    body: "Report on the historical accuracy of customer-supplied predictions; this report provides \"bins\" which show how frequently/by how much a prediction was off. \nNotably, this will weight each prediction equally- if there are many prior predictions for the same order date, this might bias the distribution. Restricting the time range and weeks of lookahead can tune results."
+  },
+  DataCoverage: {
+    title: "Data Coverage",
+    body: "Provides a high level overview of what part and ordering weeks are present within the ",
+  }
+};
+
+const LOOKAHEAD_TYPES = new Set(["OrderAccuracy"]);
+
+document.addEventListener("DOMContentLoaded", function () {
+    const checkbox = document.getElementById("save_to_file");
+    const fileRow = document.getElementById("file-path-row");
+    const lookaheadRow = document.getElementById("lookahead-row");
+    const select = document.getElementById("report_type_select");
+    const descTitle = document.getElementById("dynamic-report-title");
+    const descBody = document.getElementById("dynamic-report-body");
+
+    function toggleFileInput() {
+        fileRow.style.display = checkbox.checked ? "" : "none";
+    }
+
+    function updateDescription() {
+        const info = REPORT_DESCRIPTIONS[select.value];
+        if (info) {
+            descTitle.textContent = info.title;
+            descBody.textContent = info.body;
+        }
+        lookaheadRow.style.display = LOOKAHEAD_TYPES.has(select.value) ? "" : "none";
+    }
+
+    checkbox.addEventListener("change", toggleFileInput);
+    toggleFileInput();
+
+    select.addEventListener("change", updateDescription);
+    updateDescription();
+});
+</script>
+{% endblock %}

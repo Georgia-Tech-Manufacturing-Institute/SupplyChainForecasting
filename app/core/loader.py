@@ -3,9 +3,14 @@ import os
 from app.core.parser import *
 import pandas as pd
 from datetime import date
-from app.prefixe import pre, dirs
+from app.prefixe import pre, dirs, Path
 import sqlite3
 
+def create_connection(plant='arlington'):
+    prep = plant.strip().lower() + '.db'
+    conn = sqlite3.connect(dirs['processed'] / prep)
+    sql_setup(conn)
+    return conn
 
 def read_waterfall_week(year=None, week=None, idx=None, proc_dir=Path('data/processed/Waterfall')):
     '''
@@ -176,9 +181,6 @@ def waterfall_to_sql(conn, waterfall_dir, overwrite=False):
         d_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
         print(f"          Changed {d_rows} rows in waterfall_agg")
 
-def cost_to_sql(conn, cost_map):
-    load_to_sql(conn, 'cost', cost_map) 
-
 def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
     ''' keeps log of week info for loaded files
     conn: sqlite3 connection
@@ -264,6 +266,7 @@ def sql_setup(conn):
 
 def main():
     conn = sqlite3.connect(dirs['sql'])
+    sql_setup(conn)
     waterfall_to_sql(conn, waterfall_dir=dirs['raw']/'Waterfall')
     consumption_to_sql(conn,  consump_dir=dirs['raw']/'Consumption')
 
@@ -272,9 +275,9 @@ def main():
 
     # VERIFY DATA
     list_all_tables_row_totals(conn) # print no. rows per table
-    loaded = get_loaded_files(conn, filter_type='waterfall')
+    #loaded = get_loaded_files(conn, filter_type='waterfall')
     conn.close()
 
 
 if __name__ == '__main__':
-    pass
+    main()
