@@ -51,10 +51,6 @@ def build_training_dataset(conn, min_orderidx: int = None,
     else:
         real_data = real_data.fillna(0)
 
-    real_data = pd.concat(
-        [real_data, id_features(real_data['part'], 8)], axis=1
-    )
-
     # Use the most recent cost per part (cost table may have multiple start dates)
     latest_cost = (
         cost.sort_values('start')

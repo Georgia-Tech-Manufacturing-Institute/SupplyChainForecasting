@@ -3,25 +3,6 @@
 import numpy as np 
 import pandas as pd 
 
-def filterZeroDemand(df, q1='RelQty', q2='ConsumQty'):
-    q1=df.columns[7:-1]
-    q2="OrderQty"
-    temp = df.fillna(0)
-    def groupmax(df, qg):
-        if isinstance(qg, list):
-            maxes = df.groupby('Part')[qg].max().max(axis=1)
-        elif isinstance(qg,str) and (qg in temp.columns):
-            maxes = df.groupby('Part')[qg].max()
-        else: 
-            raise TypeError("Please ensure columns exist and are given as a single column or list of columns")
-        return maxes
-
-    nopred = groupmax(temp, list(q1)) 
-    #noconsum = groupmax(temp, q2)
-    drop_index = nopred[nopred == 0].index
-    filtered = df[~df.Part.isin(set(drop_index))]
-    return filtered.reset_index(drop=True)
-
 def timeFilter(df, year):
     filtdf = df[df.OrderYear == 2025]
     data_2025 = data_2025.sort_values(['OrderYear', 'OrderWeek'])
@@ -78,8 +59,3 @@ def stateParse(file):
             if state=='footer':
                 continue
     return filedata
-
-def forecast_age(df):
-    has_pred = df[~df.PredYear.isna()]
-
-    df.loc[has_pred.index, "forecast_age"] = (has_pred.OrderYear - has_pred.PredYear)*52 + has_pred.OrderWeek - has_pred.PredWeek

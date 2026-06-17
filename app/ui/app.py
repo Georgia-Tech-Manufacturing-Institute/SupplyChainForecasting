@@ -18,7 +18,7 @@ from app.core.loader import create_connection, consumption_to_sql, waterfall_to_
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 import sqlite3
-from app.prefixe import dirs, PLANT_SOURCES
+from app.prefixe import dirs, raw_dir, PLANT_SOURCES
 
 # !!!! Run from command line with "python app/ui/app.py" from project root
 
@@ -167,7 +167,8 @@ def load():
             if bad:
                 error = f"Invalid filename(s): {', '.join(bad)}. Expected format: 2026wk01.prn"
             else:
-                dest_dir = dirs["ext_data"] / plant_source / "raw" / data_type
+                dest_dir = raw_dir(plant_source, data_type)
+                print(dest_dir)
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 for f in files:
                     f.save(dest_dir / os.path.basename(f.filename))

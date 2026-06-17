@@ -3,20 +3,21 @@ import os
 from app.core.parser import *
 import pandas as pd
 from datetime import date
-from app.prefixe import pre, dirs, Path
+from app.prefixe import pre, dirs, raw_dir, plant_db, Path
 import sqlite3
 
 def create_connection(plant='arlington'):
-    prep = plant.strip().lower() + '.db'
     dirs['processed'].mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(dirs['processed'] / prep)
+    conn = sqlite3.connect(plant_db(plant))
     sql_setup(conn)
     return conn
 
-def read_waterfall_week(year=None, week=None, idx=None, proc_dir=Path('data/processed/Waterfall')):
+def read_waterfall_week(year=None, week=None, idx=None, proc_dir=None):
     '''
     Loads a single week (Predidx) of processed waterfall data; uses year and week, otherwise uses idx
     '''
+    if proc_dir is None:
+        proc_dir = dirs['processed'] / 'Waterfall'
     if year is None or week is None:
         if idx is None:
             raise ValueError("Must provide either year and week, or idx")
@@ -27,9 +28,11 @@ def read_waterfall_week(year=None, week=None, idx=None, proc_dir=Path('data/proc
         return None
     return pd.read_parquet(filepath)
 
-def read_waterfall_span(idx_start=None, idx_end=None, proc_dir=Path('data/processed/Waterfall')):
+def read_waterfall_span(idx_start=None, idx_end=None, proc_dir=None):
     ''' Loads a span of processed waterfall data based on prediction week (Predidx) ; 
         week is INCLUSIVE'''
+    if proc_dir is None:
+        proc_dir = dirs['processed'] / 'Waterfall'
     data = []
     for idx in range(idx_start, idx_end+1):
         yr, wk = idx_to_week(idx) 
@@ -198,10 +201,12 @@ def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
 
 
 def cost_to_sql(conn, cost_dir):
-    cost_map = costPrep(cost_dir)
-    cost_map = cost_map.rename({'Amt1':'Amount'}, axis=1)
-    cost_map.Start = cost_map.Start.astype(str)
-    load_to_sql(conn, 'cost', cost_map)
+    if cost_dir.exists():
+        cost_map = costPrep(cost_dir)
+        cost_map = cost_map.rename({'Amt1':'Amount'}, axis=1)
+        cost_map.Start = cost_map.Start.astype(str)
+        load_to_sql(conn, 'cost', cost_map)
+    
 
 def load_to_sql(conn, table, df):
     cur = conn.cursor()
@@ -265,18 +270,12 @@ def sql_setup(conn):
     conn.commit()
 
 
-def main():
-    conn = sqlite3.connect(dirs['sql'])
-    sql_setup(conn)
-    waterfall_to_sql(conn, waterfall_dir=dirs['raw']/'Waterfall')
-    consumption_to_sql(conn,  consump_dir=dirs['raw']/'Consumption')
-
-    ## Push data from raw / cost.txt to sql 
-    cost_to_sql(conn, cost_dir=dirs['cost'])
-
-    # VERIFY DATA
-    list_all_tables_row_totals(conn) # print no. rows per table
-    #loaded = get_loaded_files(conn, filter_type='waterfall')
+def main(plant='Arlington'):
+    conn = create_connection(plant)
+    waterfall_to_sql(conn, waterfall_dir=raw_dir(plant, 'Waterfall'))
+    consumption_to_sql(conn, consump_dir=raw_dir(plant, 'Consumption'))
+    cost_to_sql(conn, cost_dir=raw_dir(plant, 'Cost'))
+    list_all_tables_row_totals(conn)
     conn.close()
 
 

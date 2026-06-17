@@ -21,15 +21,10 @@ def filter_lookahead(df, max_lookahead: int):
     return df[lookahead <= max_lookahead]
 
 def get_wf_cf(plant):
-    plant = plant.strip().lower()+'.db'
-    try:
-        conn = sqlite3.connect(dirs['processed'] / plant)
-    except sqlite3.OperationalError as e:
-        if "no such table" in str(e).lower():
-            raise ValueError("Plant doesn't exist") from e
-        raise e
-
-    import sqlite3 as _sqlite3
+    db_path = plant_db(plant)
+    if not db_path.exists():
+        raise ValueError(f"No database found for plant '{plant}'")
+    conn = sqlite3.connect(db_path)
     wf = filter_SQL(conn, table='waterfall_agg')
     cf = filter_SQL(conn, table='consumption')
     conn.close()
@@ -42,10 +37,11 @@ def merged_data(plant):
 
 def get_coverage_counts(plant):
     """Return (wf_records, cf_records) — distinct part counts per orderidx for each table."""
-    plant_db = plant.strip().lower() + '.db'
+    db_path = plant_db(plant)
     try:
-        dirs['processed'].mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(dirs['processed'] / plant_db)
+        if not db_path.exists():
+            return [], []
+        conn = sqlite3.connect(db_path)
         wf = pd.read_sql_query(
             "SELECT orderidx, COUNT(DISTINCT part) AS count "
             "FROM waterfall_agg GROUP BY orderidx ORDER BY orderidx",

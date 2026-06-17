@@ -331,7 +331,7 @@ def acc_features(real_data):
         cats = [all_past_agg_accuracy.rename("part_acc_mean_qty")
                 ]
         # Rolling
-        for lookback in range(1, 4):
+        for lookback in range(3, 5):
             recent_history = prior_data[prior_data['lookahead_wk']<=lookback]
             cats.append(recent_history.groupby("part")[error_name].mean().rename(f"part_acc_rollmean{lookback}_qty"))
             cats.append(recent_history.groupby("part")[error_name].std().rename(f"part_acc_rollstd{lookback}_qty"))

@@ -113,7 +113,6 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
         'size_threshold': N,
         'feature_cols': list(X_valid.columns),
     }
-    print(bundle)
 
     if holdout_weeks > 0:
         X_test  = X_valid[test_idx]
