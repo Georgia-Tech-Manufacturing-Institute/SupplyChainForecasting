@@ -2,7 +2,7 @@ services:
   forecast-tool:
     build: .
     image: iacuser/forecast_tool:latest
-
+    platform: linux/amd64
     ports:
       - "4999:4999"
     volumes:
