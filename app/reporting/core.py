@@ -1,5 +1,3 @@
-import seaborn as sns
-import matplotlib.pyplot as plt
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -46,6 +44,7 @@ def get_coverage_counts(plant):
     """Return (wf_records, cf_records) — distinct part counts per orderidx for each table."""
     plant_db = plant.strip().lower() + '.db'
     try:
+        dirs['processed'].mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(dirs['processed'] / plant_db)
         wf = pd.read_sql_query(
             "SELECT orderidx, COUNT(DISTINCT part) AS count "

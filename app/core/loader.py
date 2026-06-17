@@ -8,6 +8,7 @@ import sqlite3
 
 def create_connection(plant='arlington'):
     prep = plant.strip().lower() + '.db'
+    dirs['processed'].mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(dirs['processed'] / prep)
     sql_setup(conn)
     return conn

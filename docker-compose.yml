@@ -2,7 +2,7 @@ services:
   forecast-tool:
     build: .
     ports:
-      - "4999:4999"         # localhost:5000 → container:5000
+      - "4999:4999"
     volumes:
       # mount local data/output folders into the container so backend scripts can read input files and write results back to the host.
       # left side  = path on YOUR personal machine  (needs updates)
@@ -15,3 +15,17 @@ services:
       - FLASK_ENV=production
       # - SECRET_KEY=   # override with a real secret - irrelevant short term, used if we ever fleshed this out to a multi-user system (used to sign session cookies)
     restart: unless-stopped
+
+    expose:
+      - "4999"
+  
+  nginx: 
+    image: nginx:latest
+    container_name: nginx-proxy
+    restart: unless-stopped
+    depends_on:
+      - forecast-tool
+    ports:
+      - "4999:4999"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro

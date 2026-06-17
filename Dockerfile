@@ -37,4 +37,4 @@ ENV FLASK_ENV=production \
 # Gunicorn is a proper production WSGI server (more stable than flask's at least)
 # Workers=2 is safe for a single-user local tool; would have to scale up a bit for a networked, multi-user tool (would also likely required some beefier hardware as well)
 # Binding to 0.0.0.0 is required so Docker's port mapping can reach it.
-CMD ["sh", "-c", "gunicorn --workers=2 --bind=0.0.0.0:${APP_PORT} --timeout=600 app.ui.app:app"]
+CMD ["sh", "-c", "gunicorn --workers=2 --bind=0.0.0.0:${APP_PORT} --timeout=600 wsgi:app"]
