@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from app.reporting.data_quality import coverage_report
 from app.reporting.history_report import error_report
 from app.reporting.core import get_coverage_counts
-from app.core.parser import week_to_idx
+from app.core.parser import week_to_idx, idx_to_week
 from app.core.loader import create_connection, consumption_to_sql, waterfall_to_sql, cost_to_sql, filter_SQL
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
 from app.reporting.model_perform import holdout_report
@@ -81,7 +81,9 @@ def _run_training_job(job_id: str, params: dict):
 
         report('training_a', f'Fitting Model A (predqty > {1})…')
         bundle = model_train(df, holdout_weeks=params['holdout'],
-                             plant=params['plant'])
+                             plant=params['plant'],
+                             config={'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0,
+                                     'model_type': params.get('model_type', 'hgb')})
 
         report('training_b', 'Fitting Model B (predqty ≤ 1)…')
 
@@ -89,7 +91,7 @@ def _run_training_job(job_id: str, params: dict):
         nickname = params['nickname']
         if not nickname:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            nickname = f"{params['plant']}_{ts}"
+            nickname = f"{params['plant']}_{params.get('model_type')}_{ts}"
 
         saved_path = save_model(bundle, nickname)
         elapsed = round(time.time() - job['started'])
@@ -245,48 +247,73 @@ def reports():
 # ── MODEL / Predict ───────────────────────────────────────────────────────────
 @app.route("/predict", methods=["GET", "POST"])
 def predict():
-    result      = None
-    error       = None
-    table_html  = None
-    row_count   = None
-    models      = _list_models()
+    result        = None
+    error         = None
+    table_html    = None
+    row_count     = None
+    models        = _list_models()
+    current_week  = datetime.now().strftime("%G-W%V")
 
     if request.method == "POST":
-        model_name = request.form.get("model", "")
-        part_num   = request.form.get("part_number", "").strip()
-        plant      = request.form.get("plant_source", "arlington").strip().lower()
+        model_name     = request.form.get("model", "")
+        plant          = request.form.get("plant_source", "arlington").strip().lower()
+        pred_weeks_raw = request.form.get("pred_weeks", "").strip()
+        aug_lookahead  = int(request.form.get("aug_lookahead", "0") or 0)
+        save_to_file   = request.form.get("save_to_file") == "1"
+        file_path      = request.form.get("file_path", "").strip()
 
         try:
+            predidxs = None
+            if pred_weeks_raw:
+                weeks    = [w.strip() for w in re.split(r'[,\s]+', pred_weeks_raw) if w.strip()]
+                predidxs = [parse_week_to_idx(w) for w in weeks]
+
             bundle = load_model(model_name)
             conn   = create_connection(plant=plant)
-            df     = build_prediction_dataset(conn)
+            df     = build_prediction_dataset(conn, predidxs=predidxs,
+                                              aug_lookahead=aug_lookahead)
             conn.close()
 
-            if part_num:
-                df = df[df['part'].str.startswith(part_num)]
-
             if df.empty:
-                error = f"No waterfall rows found for part prefix '{part_num}'."
+                error = "No waterfall rows found for the specified parameters."
             else:
+                import pandas as pd
                 preds = predict_from_bundle(bundle, df)
                 row_count = len(preds)
 
-                display_cols = ['part', 'orderidx', 'predqty', 'est_orderqty', 'adj_volume', 'amount']
-                display_cols = [c for c in display_cols if c in preds.columns]
-                display = preds[display_cols].copy()
-                display['est_orderqty'] = display['est_orderqty'].astype(int)
-                display['adj_volume']   = display['adj_volume'].round(2)
-
-                # Save full results as CSV
+                # Build pivot: naive (predqty) vs model (est_qty)
+                out = preds.sort_values('predidx').copy()
+                out[['year', 'week']] = pd.DataFrame(
+                    out['orderidx'].apply(idx_to_week).tolist(),
+                    index=out.index
+                )
+                out = out.rename(columns={'est_orderqty': 'ModelQty',
+                                          'predqty': 'WaterfallQty'})
+                pivot = out.pivot_table(
+                    index=['part'],
+                    columns=['week', 'year'],
+                    values=['WaterfallQty', 'ModelQty'],
+                    aggfunc='last',
+                )
+                swapped = pivot.swaplevel(axis=1, i=0, j=-1)
+                pivot = swapped.sort_index(axis=1)       
+                         
                 out_dir = dirs['reports']
                 out_dir.mkdir(parents=True, exist_ok=True)
                 ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                csv_path = out_dir / f"predictions_{ts}.csv"
-                preds.to_csv(csv_path, index=False)
-                result = str(csv_path)
 
-                # Show first 200 rows inline
-                table_html = display.head(200).to_html(
+                if save_to_file:
+                    fname = file_path or f"predictions_{ts}.xlsx"
+                    if not fname.endswith('.xlsx'):
+                        fname += '.xlsx'
+                    save_path = out_dir / fname
+                    pivot.to_excel(save_path)
+                    result = str(save_path)
+
+                display = pivot.copy()
+                # display['est_qty']    = display['est_qty'].astype(int)
+                # display['adj_volume'] = display['adj_volume'].round(2)
+                table_html = display.head(50).to_html(
                     index=False, classes='pred-table', border=0
                 )
 
@@ -302,6 +329,7 @@ def predict():
         error=error,
         table_html=table_html,
         row_count=row_count,
+        current_week=current_week,
     )
 
 
@@ -317,15 +345,19 @@ def retrain_start():
     earliest_order = request.form.get("earliest_order_date", "").strip()
     latest_order   = request.form.get("latest_order_date",   "").strip()
     try:
+        model_type = request.form.get("model_type", "hgb").strip()
+        if model_type not in ('hgb', 'rf', 'nn'):
+            model_type = 'hgb'
         params = {
-            'plant':    request.form.get("plant_source", "arlington").strip().lower(),
-            'min_oi':   parse_week_to_idx(earliest_order) if earliest_order else None,
-            'max_oi':   parse_week_to_idx(latest_order)   if latest_order   else None,
-            'holdout':  int(request.form.get("holdout_weeks", "0") or 0),
-            'nickname': request.form.get("model_nickname", "").strip(),
-            'augment':  request.form.get("augment") == "1",
+            'plant':      request.form.get("plant_source", "arlington").strip().lower(),
+            'min_oi':     parse_week_to_idx(earliest_order) if earliest_order else None,
+            'max_oi':     parse_week_to_idx(latest_order)   if latest_order   else None,
+            'holdout':    int(request.form.get("holdout_weeks", "0") or 0),
+            'nickname':   request.form.get("model_nickname", "").strip(),
+            'augment':    request.form.get("augment") == "1",
             'min_la_pad': int(request.form.get("min_part_lookahead_to_pad", 4) or 4),
             'la_pad':     int(request.form.get("lookahead_padding", 4) or 4),
+            'model_type': model_type,
         }
     except Exception as exc:
         return jsonify({'error': str(exc)}), 400

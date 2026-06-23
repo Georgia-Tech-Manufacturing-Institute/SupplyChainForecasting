@@ -32,6 +32,17 @@
           </tr>
 
           <tr>
+            <th class="row-label">Model Type</th>
+            <td>
+              <select name="model_type" id="model_type">
+                <option value="hgb">Gradient Boosting (HGB)</option>
+                <option value="rf">Random Forest</option>
+                <option value="nn">Neural Network</option>
+              </select>
+            </td>
+          </tr>
+
+          <tr>
             <th class="row-label" colspan="2"
                 style="background:var(--bg); font-size:12px; font-weight:400;
                        color:var(--text-muted); padding:8px 16px;">
@@ -72,7 +83,7 @@
             </td>
           </tr>
           <tr id="augment-params">
-            <th class="row-label" style="font-weight:400; color:var(--text-muted);">Augment Parameters</th>
+            <th class="row-label" >Augment Parameters</th>
             <td>
               <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
                 <label style="font-size:13px;">
@@ -147,7 +158,48 @@
       </div>
     </div>
 
-    <div class="helper-description" style="margin-top:1rem;">
+    <div class="helper-description" id="model-cmp-box">
+      <div class="desc-title">Model comparison</div>
+      <table class="model-cmp-table">
+        <colgroup>
+          <col style="width:34%">
+          <col style="width:22%">
+          <col style="width:22%">
+          <col style="width:22%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Complexity</th>
+            <th>Time</th>
+            <th>Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr id="cmp-row-hgb" data-mtype="hgb">
+            <td>HGB</td>
+            <td><span class="cmp-pip cmp-med">med</span></td>
+            <td><span class="cmp-pip cmp-fast">fast</span></td>
+            <td><span class="cmp-pip cmp-fast">small</span></td>
+          </tr>
+          <tr id="cmp-row-rf" data-mtype="rf">
+            <td>Rand. Forest</td>
+            <td><span class="cmp-pip cmp-hi">high</span></td>
+            <td><span class="cmp-pip cmp-med">med</span></td>
+            <td><span class="cmp-pip cmp-hi">large</span></td>
+          </tr>
+          <tr id="cmp-row-nn" data-mtype="nn">
+            <td>Neural Net</td>
+            <td><span class="cmp-pip cmp-med">med</span></td>
+            <td><span class="cmp-pip cmp-slow">slow</span></td>
+            <td><span class="cmp-pip cmp-fast">tiny</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="cmp-note">HGB &amp; RF handle NaN natively. NN encodes missingness as learned indicator features.</p>
+    </div>
+
+    <div class="helper-description">
       <div class="desc-title">Saved models</div>
       <div>
         {% if models %}
@@ -179,17 +231,33 @@
   let userEdited = nicknameEl.value.length > 0;
   nicknameEl.addEventListener('input', () => { userEdited = true; });
 
+  function updateNickname() {
+    if (userEdited) return;
+    const eo = document.getElementById('earliest_order_date').value;
+    const lo = document.getElementById('latest_order_date').value;
+    const mt = document.getElementById('model_type').value;
+    const parts = [];
+    if (eo) parts.push(eo.replace('-W', 'w'));
+    if (lo) parts.push(lo.replace('-W', 'w'));
+    nicknameEl.value = parts.length ? `model_${mt}_` + parts.join('_') : '';
+  }
+
   ['earliest_order_date', 'latest_order_date'].forEach(id => {
-    document.getElementById(id).addEventListener('change', function () {
-      if (userEdited) return;
-      const eo = document.getElementById('earliest_order_date').value;
-      const lo = document.getElementById('latest_order_date').value;
-      const parts = [];
-      if (eo) parts.push(eo.replace('-W', 'w'));
-      if (lo) parts.push(lo.replace('-W', 'w'));
-      nicknameEl.value = parts.length ? 'model_' + parts.join('_') : '';
-    });
+    document.getElementById(id).addEventListener('change', updateNickname);
   });
+  document.getElementById('model_type').addEventListener('change', updateNickname);
+
+  /* ── comparison table highlight ─────────────────────────── */
+  (function () {
+    const sel = document.getElementById('model_type');
+    function syncCmp() {
+      document.querySelectorAll('.model-cmp-table tr[id^="cmp-row-"]').forEach(row => {
+        row.classList.toggle('cmp-active', row.dataset.mtype === sel.value);
+      });
+    }
+    sel.addEventListener('change', syncCmp);
+    syncCmp();
+  })();
 
   /* ── stage pipeline ──────────────────────────────────────── */
   const STAGES = [

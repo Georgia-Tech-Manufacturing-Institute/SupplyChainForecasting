@@ -9,7 +9,7 @@
 .pred-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
 .pred-table tr:hover td { background: var(--surface); }
 .result-count { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
-.table-scroll  { max-height: 480px; overflow-y: auto; margin-top: 12px; }
+.table-scroll  { max-height: 480px; overflow-y: auto; margin-top: 12px; justify-content: center;}
 </style>
 {% endblock %}
 
@@ -54,14 +54,48 @@
             </select>
           </td>
         </tr>
-        <!-- <tr>
-          <th class="row-label">Part Prefix Filter</th>
+        <tr>
+          <th class="row-label">Prediction Week(s)
+            <div class="help-text">Range of weeks to use to base  <code>2026-W24</code>. Separate multiple with commas. Defaults to current week.</div>
+          </th>
           <td>
-            <input type="text" name="part_number"
-                   placeholder="e.g. 240  (leave blank for all parts)"
-                   value="{{ request.form.get('part_number', '') }}" />
+            <input type="text" name="pred_weeks"
+                   placeholder="e.g. 2026-W24, 2026-W25"
+                   value="{{ request.form.get('pred_weeks', current_week) }}" />
           </td>
-        </tr> -->
+        </tr>
+        <tr>
+          <th class="row-label">Extend Predictions (wks)
+            <div class="help-text">Add this many future order weeks beyond the waterfall horizon.</div>
+          </th>
+          <td>
+            <input type="number" name="aug_lookahead" min="0"
+                   value="{{ request.form.get('aug_lookahead', '0') }}" />
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Save to file</th>
+          <td>
+            <label>
+              <input type="checkbox"
+                     id="save_to_file"
+                     name="save_to_file"
+                     value="1"
+                     {% if request.form.get('save_to_file') %}checked{% endif %}>
+              Save pivot as XLSX
+            </label>
+          </td>
+        </tr>
+        <tr id="file-path-row"
+            {% if not request.form.get('save_to_file') %}style="display:none;"{% endif %}>
+          <th class="row-label">File Name</th>
+          <td>
+            <input type="text"
+                   name="file_path"
+                   placeholder="predictions.xlsx"
+                   value="{{ request.form.get('file_path', '') }}">
+          </td>
+        </tr>
       </tbody>
     </table>
 
@@ -92,7 +126,7 @@
   <div class="result-count">
     Showing first 200 of <strong>{{ row_count }}</strong> rows &nbsp;|&nbsp;
     {% if result %}
-      Full results saved to <code>{{ result }}</code>
+      XLSX saved to <code>{{ result }}</code>
     {% endif %}
   </div>
   <div class="table-scroll">
@@ -110,5 +144,17 @@
 
  
 {% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const checkbox = document.getElementById("save_to_file");
+    const fileRow  = document.getElementById("file-path-row");
+    if (checkbox && fileRow) {
+        checkbox.addEventListener("change", function () {
+            fileRow.style.display = checkbox.checked ? "" : "none";
+        });
+    }
+});
+</script>
 
 {% endblock %}
