@@ -1,10 +1,11 @@
 import joblib
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
 import pandas as pd
 import numpy as np
 from app.prefixe import pre, dirs
+from app.models.estimators import NaNAwareMLPRegressor
 
 pq = pre['pq']
 oi = pre['oi']
@@ -56,6 +57,32 @@ def _build_XY(df, obj, drop_cols=None):
     return X, y
 
 
+def _make_model(config: dict):
+    """Return an untrained estimator for the requested model_type."""
+    mtype = config.get('model_type', 'hgb')
+    if mtype == 'hgb':
+        return HistGradientBoostingRegressor(
+            loss=config.get('loss', 'absolute_error'),
+            l2_regularization=config.get('l2', 1.0),
+        )
+    if mtype == 'rf':
+        return RandomForestRegressor(
+            n_estimators=config.get('n_estimators', 300),
+            max_features=config.get('max_features', 'sqrt'),
+            min_samples_leaf=config.get('min_samples_leaf', 5),
+            n_jobs=-1,
+            random_state=42,
+        )
+    if mtype == 'nn':
+        return NaNAwareMLPRegressor(
+            hidden_layer_sizes=config.get('hidden_layer_sizes', (128, 64, 32)),
+            alpha=config.get('alpha', 1e-3),
+            max_iter=config.get('max_iter', 1000),
+            random_state=42,
+        )
+    raise ValueError(f"Unknown model_type: {mtype!r}. Use 'hgb', 'rf', or 'nn'.")
+
+
 def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
                 plant: str='arlington',
                 config: dict = None):
@@ -68,10 +95,8 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     if config is None:
         config = {'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0}
 
-    obj  = config['obj']
-    loss = config['loss']
-    L2   = config['l2']
-    N    = N_THRESHOLD
+    obj = config.get('obj', 'log')
+    N   = N_THRESHOLD
 
     df = df.sort_values(['part', oi]).copy()
     df['Volume'] = df[pq] * df[AMT_COL]
@@ -94,13 +119,13 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     # Model A: predqty > N
     train_hi   = train_idx & (df_valid[pq] > N)
     X_tr_A, y_tr_A = X_valid[train_hi], y_valid[train_hi]
-    mA = HistGradientBoostingRegressor(loss=loss, l2_regularization=L2)
+    mA = _make_model(config)
     mA.fit(X_tr_A, y_tr_A)
 
     # Model B: predqty <= N
     train_lo   = train_idx & (df_valid[pq] <= N)
     X_tr_B, y_tr_B = X_valid[train_lo], y_valid[train_lo]
-    mB = HistGradientBoostingRegressor(loss=loss, l2_regularization=L2)
+    mB = _make_model(config)
     mB.fit(X_tr_B, y_tr_B)
 
     bundle = {
@@ -137,6 +162,23 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
         score_block(y_raw, baseline, "Naive baseline", split_week, records)
         bundle['scores'] = pd.DataFrame(records)
 
+        # Per-row holdout data for reporting (qty space, not volume space)
+        amt_safe = amt_test.replace(0, np.nan).values
+        est_qty  = np.round(pq_test.values + preds / amt_safe)
+        est_qty  = np.where(np.isnan(est_qty), pq_test.values, est_qty)
+
+        base_cols = ['part', oi, oq, pq]
+        if 'lookahead_wk' in df_valid.columns:
+            base_cols.append('lookahead_wk')
+        holdout_df = df_valid[test_idx][base_cols].copy().reset_index(drop=True)
+        holdout_df['est_orderqty']   = est_qty
+        holdout_df['naive_orderqty'] = pq_test.values
+        if 'lookahead_wk' not in holdout_df.columns:
+            holdout_df['lookahead_wk'] = (
+                df_valid[test_idx][oi].values - df_valid[test_idx]['predidx'].values
+            )
+        bundle['holdout_df'] = holdout_df
+
     return bundle
 
 
@@ -148,6 +190,7 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     except it does NOT need oq (orderqty).  Returns df with new columns:
         adj_volume  — predicted volume adjustment
         est_orderqty — estimated order quantity (rounded)
+
     """
     mA   = bundle['mA']
     mB   = bundle['mB']
