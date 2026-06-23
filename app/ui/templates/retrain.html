@@ -60,6 +60,35 @@
             </td>
           </tr>
           <tr>
+            <th class="row-label">Augment Waterfall
+              <div class="help-text">Synthesise missing lookahead observations before training</div>
+            </th>
+            <td>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="augment_toggle" name="augment" value="1" checked
+                       style="width:15px; height:15px; cursor:pointer;" />
+                <span style="font-size:13px;">Augment during feature generation</span>
+              </label>
+            </td>
+          </tr>
+          <tr id="augment-params">
+            <th class="row-label" style="font-weight:400; color:var(--text-muted);">Augment Parameters</th>
+            <td>
+              <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <label style="font-size:13px;">
+                  Min lookahead to pad
+                  <input type="number" name="min_part_lookahead_to_pad" value="4" min="1" max="52"
+                         style="width:60px; margin-left:6px;" />
+                </label>
+                <label style="font-size:13px;">
+                  Lookahead padding
+                  <input type="number" name="lookahead_padding" value="4" min="1" max="52"
+                         style="width:60px; margin-left:6px;" />
+                </label>
+              </div>
+            </td>
+          </tr>
+          <tr>
             <th class="row-label">Model Name</th>
             <td>
               <input type="text" name="model_nickname" id="model_nickname"
@@ -136,6 +165,15 @@
 
 <script>
 (function () {
+  /* ── augment toggle ─────────────────────────────────────── */
+  (function () {
+    const toggle = document.getElementById('augment_toggle');
+    const params = document.getElementById('augment-params');
+    function sync() { params.style.display = toggle.checked ? '' : 'none'; }
+    toggle.addEventListener('change', sync);
+    sync();
+  })();
+
   /* ── nickname suggestion ─────────────────────────────────── */
   const nicknameEl = document.getElementById('model_nickname');
   let userEdited = nicknameEl.value.length > 0;
