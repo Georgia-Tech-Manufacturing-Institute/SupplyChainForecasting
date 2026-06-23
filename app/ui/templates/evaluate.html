@@ -8,83 +8,56 @@
 
 <div style="display:flex; gap:1.5rem; align-items:flex-start;">
 
-<div class="card">
-  <form method="POST">
-    <table class="form-table">
-      <thead>
-        <tr>
-          <th>Choose Model:</th>
-          <td>
-            <select name="model" style="max-width:260px;">
-              {% for m in models %}
-                <option value="{{ m }}"
-                  {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
-                  {{ m }}
-                </option>
-              {% endfor %}
-            </select>
-          </td>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th class="row-label">Plant Source</th>
-          <td>
-            <select name="plant_source" class="form-select">
-              {% for p in plant_sources %}
-                <option value="{{ p }}"
-                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
-                  {{ p }}
-                </option>
-              {% endfor %}
-            </select>
-          </td>
-        </tr>
-        <tr>
-          <th class="row-label">Evaluation Start Date</th>
-          <td>
-            <input type="week" name="eval_start"
-                   value="{{ request.form.get('eval_start', '') }}" />
-          </td>
-        </tr>
-        <tr>
-          <th class="row-label">Evaluation End Date</th>
-          <td>
-            <input type="week" name="eval_end"
-                   value="{{ request.form.get('eval_end', '') }}" />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="card" style="min-width:280px;">
+    <form method="POST">
+      <table class="form-table">
+        <thead>
+          <tr>
+            <th colspan="2">Holdout Performance Report</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th class="row-label">Model</th>
+            <td>
+              <select name="model" style="max-width:260px;">
+                {% for m in models %}
+                  <option value="{{ m }}"
+                    {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
+                    {{ m }}
+                  </option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-    <div class="action-row">
-      <button type="submit" class="btn-run">Evaluate</button>
+      <div class="action-row">
+        <button type="submit" class="btn-run">Generate Report</button>
+        {% if error %}
+          <span class="error-banner">✖ {{ error }}</span>
+        {% endif %}
+      </div>
+    </form>
+  </div>
 
-      {% if result %}
-        <div class="result-banner">
-          ✔ Evaluation saved to<br/>
-          <span class="preview-path">{{ result }}</span>
-          <div class="xlsx-hint">📊 Excel file (.xlsx)</div>
-        </div>
-      {% elif error %}
-        <span class="error-banner">✖ {{ error }}</span>
-      {% endif %}
-    </div>
-  </form>
-</div>
-
-  <div id="report-description" class="helper-description">
-    <div id="desc-title" class="desc-title">
-        Information
-    </div>
-    <div id="desc-body">
-        Description.
+  <div class="helper-description" style="min-width:220px;">
+    <div class="desc-title">About this report</div>
+    <div style="font-size:13px; line-height:1.7; color:var(--text-muted);">
+      <p>Shows performance on the holdout weeks set aside during training.</p>
+      <p><b>Scatter</b> — actual vs predicted order qty; naive baseline is raw <code>predqty</code>.</p>
+      <p><b>Line</b> — MAE broken down by lookahead week; lower is better.</p>
+      <p>Train a model with <em>Holdout Weeks &gt; 0</em> on the Train page to enable this report.</p>
     </div>
   </div>
 
 </div>
 
-<p style="margin-top:16px; font-size:13px; color:var(--text-muted);">
-  Compares recent model predictions against actual customer order accuracy for the selected date range.
-</p>
+{% if chart_html %}
+<div style="margin-top:1.5rem;">
+  {{ chart_html | safe }}
+</div>
+{% endif %}
+
 {% endblock %}

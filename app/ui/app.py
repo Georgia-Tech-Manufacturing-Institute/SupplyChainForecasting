@@ -16,6 +16,7 @@ from app.reporting.core import get_coverage_counts
 from app.core.parser import week_to_idx
 from app.core.loader import create_connection, consumption_to_sql, waterfall_to_sql, cost_to_sql, filter_SQL
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
+from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 import sqlite3
 from app.prefixe import dirs, raw_dir, PLANT_SOURCES
@@ -63,6 +64,9 @@ def _run_training_job(job_id: str, params: dict):
             conn,
             min_orderidx=params['min_oi'],
             max_orderidx=params['max_oi'],
+            augment=params.get('augment', True),
+            min_lookahead_to_pad=params.get('min_la_pad', 4),
+            lookahead_pad=params.get('la_pad', 4),
             progress_cb=wf_progress,
         )
         conn.close()
@@ -319,6 +323,9 @@ def retrain_start():
             'max_oi':   parse_week_to_idx(latest_order)   if latest_order   else None,
             'holdout':  int(request.form.get("holdout_weeks", "0") or 0),
             'nickname': request.form.get("model_nickname", "").strip(),
+            'augment':  request.form.get("augment") == "1",
+            'min_la_pad': int(request.form.get("min_part_lookahead_to_pad", 4) or 4),
+            'la_pad':     int(request.form.get("lookahead_padding", 4) or 4),
         }
     except Exception as exc:
         return jsonify({'error': str(exc)}), 400
@@ -344,27 +351,28 @@ def retrain_status(job_id):
 
 
 # ── MODEL / Evaluate ──────────────────────────────────────────────────────────
-# wip
 @app.route("/evaluate", methods=["GET", "POST"])
 def evaluate():
-    result = None
-    error = None
-    models = _list_models()
+    error      = None
+    chart_html = None
+    models     = _list_models()
 
     if request.method == "POST":
-        model      = request.form.get("model", "")
-        eval_start = request.form.get("eval_start", "").strip()
-        eval_end   = request.form.get("eval_end",   "").strip()
-
-        eval_start = parse_week_to_idx(eval_start)
-        eval_end = parse_week_to_idx(eval_end)
+        model_name = request.form.get("model", "")
+        try:
+            bundle     = load_model(model_name)
+            chart_html = holdout_report(bundle)
+            if not chart_html:
+                error = "This model was not trained with a holdout set — retrain with Holdout Weeks > 0 to generate a performance report."
+        except Exception as e:
+            error = str(e)
 
     return render_template(
         "evaluate.html",
         active="evaluate",
         models=models,
-        plant_sources=PLANT_SOURCES, 
-        result=result,
+        plant_sources=PLANT_SOURCES,
+        chart_html=chart_html,
         error=error,
     )
 
