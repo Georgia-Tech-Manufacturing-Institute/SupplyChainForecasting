@@ -165,11 +165,6 @@ def accuracy_features(aligned_frame):
 
     return df
 
-def part_history(agg_frame):
-    # agg_frame: df/cf merged frame 
-    pass
-
-
 ### Simpler lightweight features
 def release_gp_variation(agg_frame, col, unit=None):
     # agg_frame: df/cf merged frame
@@ -239,7 +234,7 @@ def consumption_features(frame):
     cf = frame.copy()
     # Create features based on consumption data - for each order date, what was the context of prior ordering behavior
     newcf = cf[["part", oi, oq]].sort_values(["part", oi])
-    for i in range(2,4): # rolling is okay since we have all data every map.
+    for i in range(2,6): # rolling is okay since we have all data every map.
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
     # Prior order
     newcf[f'part_lag1_qty'] = newcf.groupby("part").shift(1)[oq]
@@ -312,16 +307,14 @@ def demand_share_features(df):
     return df
 
 def acc_features(real_data):
-    # merged: ordering aligned dataframe
     df = real_data.copy()
-    # TODO : FIX THIS !!!! 
+    part_acc_history = []
     for i in sorted(df[pi].unique()):
         # Assume "present" is week i; Iterate through each week and update with past accuracy diagnostics
-        currentweek = df[pi]==i # Current prediction week 
-
         # Retrieve known ordering up to "present" week
         prior_data = df[df[oi] < i][['part', pi, oi, oq, pq, 'lookahead_wk']] # Update current prediction week
-        print(prior_data.shape)
+        if prior_data.shape[0] == 0:
+            continue
         # Same part N week accuracy
         error_name = f'{oq}_error_qty'
         prior_data[error_name] = prior_data[oq] - prior_data[pq]
@@ -331,11 +324,15 @@ def acc_features(real_data):
         cats = [all_past_agg_accuracy.rename("part_acc_mean_qty")
                 ]
         # Rolling
-        for lookback in range(3, 5):
+        for lookback in range(3, 8):
             recent_history = prior_data[prior_data['lookahead_wk']<=lookback]
             cats.append(recent_history.groupby("part")[error_name].mean().rename(f"part_acc_rollmean{lookback}_qty"))
             cats.append(recent_history.groupby("part")[error_name].std().rename(f"part_acc_rollstd{lookback}_qty"))
-        part_acc = pd.concat(cats, axis=1)
+        part_acc = pd.concat(cats, axis=1).reset_index(drop=False)
+        part_acc[pre['pi']] = i 
+        part_acc_history.append(part_acc)
+    part_acc_history = pd.concat(part_acc_history)
+    return df.merge(part_acc_history, how='left', on=['part', pre['pi']])
 
 def date_features(frame):
     df = frame.copy()

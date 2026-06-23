@@ -43,14 +43,18 @@ def read_waterfall_span(idx_start=None, idx_end=None, proc_dir=None):
     #wf = wf.drop_duplicates(subset=['Part', 'RelDate', 'Orderidx'])
     return wf
 
-
-def filter_SQL(conn, idx_start=None, idx_end=None, table='waterfall'):        
-    start_cond = f'predidx >= {idx_start}' if idx_start is not None else None
-    end_cond = f'predidx <= {idx_end}' if idx_end is not None else None
-    if start_cond or end_cond:
-        where_clause = "WHERE " + " AND ".join(filter(None, [start_cond, end_cond]))
-    else: 
-        where_clause = ""
+def filter_SQL(conn, idx_start=None, idx_end=None, table='waterfall_agg', aug=False):     
+    # aug:  whether augmented rows only
+    #   aug=True only augmented / aug=False only real / aug=None all data   
+    conditions = []
+    if idx_start is not None:
+        conditions.append(f'predidx >= {idx_start}')
+    if idx_end is not None:
+        conditions.append(f'predidx <= {idx_end}')
+    where_clause = (
+        "WHERE " + " AND ".join(conditions)
+        if conditions else ""
+    )
     query = f"SELECT * FROM {table} {where_clause}"
     return pd.read_sql_query(query, conn)
 
@@ -255,6 +259,7 @@ def sql_setup(conn):
         orderidx INT,
         predidx INT, 
         predqty INT,
+        augmented BOOLEAN NOT NULL DEFAULT 0,
         pcr INT,
         UNIQUE(part, orderidx, predidx)
     );  """)
@@ -269,6 +274,76 @@ def sql_setup(conn):
     ); """)
     conn.commit()
 
+oi = pre['oi']
+pi = pre['pi']
+
+def augment_waterfall(wf, min_part_lookahead_to_pad=4, lookahead_padding=4):
+    # wf: waterfall dataset. 
+    df = wf.copy()
+    df['lookahead_wks'] = df[oi] - df[pi]
+
+    max_lookahead_by_part = df.groupby('part')['lookahead_wks'].max()
+    qualifying_parts = max_lookahead_by_part[max_lookahead_by_part >= min_part_lookahead_to_pad].index
+    subdf = df[df['part'].isin(qualifying_parts)]
+    # Also ignore weeks where really last minute changes happened
+    mask = (
+        subdf.groupby(['part', oi])['lookahead_wks']
+            .transform('max')  > min_part_lookahead_to_pad
+    )
+
+    subdf = subdf[mask]
+    # Per part/order, determine the lookahead range to fill
+    order_min_la = subdf.groupby(['part', oi])['lookahead_wks'].min().rename('order_min_la')
+    order_min_la = np.maximum(order_min_la, min_part_lookahead_to_pad)
+    part_target_max_la = (max_lookahead_by_part + lookahead_padding).rename('target_max_la')
+
+    order_info = order_min_la.reset_index().join(part_target_max_la, on='part')
+
+    order_info['la_range'] = order_info.apply(
+        lambda r: list(range(int(r['order_min_la']) + 1, int(r['target_max_la']) + 1)), axis=1
+    )
+    expanded = order_info.explode('la_range').dropna(subset=['la_range'])
+    expanded = expanded.rename(columns={'la_range': 'lookahead_wks'})
+    expanded['lookahead_wks'] = expanded['lookahead_wks'].astype(int)
+    expanded[pi] = expanded[oi] - expanded['lookahead_wks']
+    expanded = expanded[expanded[pi] >= 0].copy()
+
+    # Drop combos that already exist
+    existing_keys = df.set_index(['part', oi, 'lookahead_wks']).index
+    new_keys = expanded.set_index(['part', oi, 'lookahead_wks']).index
+    expanded = expanded[~new_keys.isin(existing_keys)]
+
+    # For each new row, find the most recent prior prediction:
+    # i.e. the row in subdf with the same (part, oi) where subdf[pi] < new row's pi,
+    # taking the one with the largest such pi (smallest lookahead).
+    # We do this with a merge + filter + pick-closest.
+    meta_cols = [c for c in subdf.columns if c not in [pi, 'lookahead_wks']]
+    candidates = subdf[meta_cols + [pi, 'lookahead_wks']].copy()
+    candidates = candidates.rename(columns={pi: 'src_pi', 'lookahead_wks': 'src_la'})
+
+    # Cross-join on part + oi, then filter to prior predictions only
+    aug = expanded.merge(candidates, on=['part', oi], how='left')
+    aug = aug[aug['src_pi'] < aug[pi]]  # only predictions made before the new synthetic pi
+
+    # Keep the most recent prior prediction (largest src_pi) per new row
+    aug = (
+        aug.sort_values('src_pi')
+        .groupby(['part', oi, 'lookahead_wks'], as_index=False)
+        .last() )
+
+    # For (part, oi, lookahead) combos with no prior prediction, fall back to 0
+    no_prior = expanded[
+        ~expanded.set_index(['part', oi, 'lookahead_wks']).index.isin(
+            aug.set_index(['part', oi, 'lookahead_wks']).index
+        ) ].copy()
+    qty_cols = [c for c in subdf.columns if c not in ['part', oi, pi, 'lookahead_wks']]
+    for c in qty_cols:
+        no_prior[c] = 0
+
+    aug = pd.concat([aug, no_prior], ignore_index=True)
+    aug = aug.drop(columns=['order_min_la', 'target_max_la', 'src_pi', 'src_la'], errors='ignore')
+    aug = aug.reset_index(drop=True).drop('lookahead_wks',axis=1)
+    return aug
 
 def main(plant='Arlington'):
     conn = create_connection(plant)

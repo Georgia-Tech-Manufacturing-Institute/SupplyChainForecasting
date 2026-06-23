@@ -2,10 +2,10 @@ import pandas as pd
 import sqlite3
 
 from app.prefixe import pre
-from app.core.loader import filter_SQL
+from app.core.loader import filter_SQL, augment_waterfall
 from app.core.parser import week_to_idx
 from app.models.features import (
-    waterfall_features, consumption_features, id_features
+    waterfall_features, consumption_features, id_features, acc_features
 )
 
 oi = pre['oi']
@@ -16,6 +16,9 @@ pq = pre['pq']
 def build_training_dataset(conn, min_orderidx: int = None,
                            max_orderidx: int = None,
                            remove_nans: bool = True,
+                           augment: bool = False,
+                           min_lookahead_to_pad: int=4,
+                           lookahead_pad: int=4,
                            progress_cb=None) -> pd.DataFrame:
     """
     Pull waterfall, consumption, and cost from conn and return a
@@ -29,9 +32,13 @@ def build_training_dataset(conn, min_orderidx: int = None,
     remove_nans  : drop rows where orderqty is NaN (True); otherwise fill 0
     """
     wf   = filter_SQL(conn, table='waterfall_agg')
+    wf['augmented'] = 0
+    if augment: 
+        aug = augment_waterfall(wf, min_lookahead_to_pad, lookahead_pad)
+        aug['augmented'] = 1
+        wf = pd.concat([wf, aug])
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
-
     waterfall   = waterfall_features(wf, progress_cb=progress_cb)
     consumption = consumption_features(cf)
 
@@ -40,12 +47,12 @@ def build_training_dataset(conn, min_orderidx: int = None,
         .merge(consumption, on=['part', oi], how='left')
         .sort_values(['predidx', 'part', oi])
     )
+    merged = acc_features(merged)
 
     lo = min_orderidx if min_orderidx is not None else cf[oi].min()
     hi = max_orderidx if max_orderidx is not None else wf[oi].max()
 
     real_data = merged[(merged[oi] < hi) & (merged[oi] >= lo)]
-
     if remove_nans:
         real_data = real_data[~real_data[oq].isna()]
     else:
@@ -62,7 +69,7 @@ def build_training_dataset(conn, min_orderidx: int = None,
     return real_data.reset_index(drop=True)
 
 
-def build_prediction_dataset(conn) -> pd.DataFrame:
+def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFrame:
     """
     Build a feature-ready dataset for inference on the current waterfall.
 
@@ -71,6 +78,10 @@ def build_prediction_dataset(conn) -> pd.DataFrame:
     since these are future orders.
     """
     wf   = filter_SQL(conn, table='waterfall_agg')
+
+    # extend lookahead - create dummy predictions for weeks that do not currently have predictions 
+    #  
+
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
 
@@ -88,9 +99,20 @@ def build_prediction_dataset(conn) -> pd.DataFrame:
         .drop(columns=[oi], errors='ignore')
     )
 
-    # Latest prediction week only (most current waterfall snapshot)
-    current_predidx = waterfall['predidx'].max()
-    latest_wf = waterfall[waterfall['predidx'] == current_predidx].copy()
+    if predidxs is None:
+        # Latest prediction week only (most current waterfall snapshot)
+        current_predidx = waterfall['predidx'].max()
+        latest_wf = waterfall[waterfall['predidx'] == current_predidx].copy()
+    elif isinstance(predidxs, int):
+        latest_wf = waterfall[waterfall['predidx'] == predidxs].copy()
+    elif isinstance(predidxs, list): 
+        latest_wf = waterfall[(waterfall['predidx']).isin(predidxs)].copy()
+    else:
+        raise ValueError("predidxs mut be a int, list of ints")
+    
+    if len(latest_wf)==0:
+        raise ValueError("Date range returns no predictions")
+
 
     latest_wf = latest_wf.merge(last_consump, on='part', how='left')
     latest_wf = pd.concat(
