@@ -135,6 +135,14 @@
                   <input type="number" name="wk_divisor" value="52" min="1"
                          style="width:60px; margin-left:6px;" />
                 </label>
+                <label style="font-size:13px;">
+                  Other column scaling
+                  <select name="other_scale" id="other_scale" style="margin-left:6px;">
+                    <option value="">None</option>
+                    <option value="max">Max</option>
+                    <option value="mean">Mean</option>
+                  </select>
+                </label>
               </div>
             </td>
           </tr>
@@ -254,9 +262,9 @@
   (function () {
     const toggle = document.getElementById('scale_toggle');
     const params = document.getElementById('scale-params');
-    function sync() { params.style.display = toggle.checked ? '' : 'none'; }
-    toggle.addEventListener('change', sync);
-    sync();
+    function syncScale() { params.style.display = toggle.checked ? '' : 'none'; }
+    toggle.addEventListener('change', syncScale);
+    syncScale();
   })();
 
   /* ── nickname suggestion ─────────────────────────────────── */
