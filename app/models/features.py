@@ -83,43 +83,6 @@ def latest_release_per_week(df, groups:list=['part', oi, pi],
     '''
     return df.loc[df.groupby(groups)[date_col].idxmax()]
 
-# Data aaugmentation -----------------------------------------------------------------------------
-
-
-def extend_predictions(df, n=1):
-    # extend predictions by n=1 week by creating an earlier null prediction (ie predqty=0)
-    # per part/order week, creates n prior predictions n, n-1... weeks earlier than the first prediction
-    # TODO provide production number subset
-    earliest_pred_per_part_order = df.sort_values(["part",oi]).groupby(['part', oi])[pi].min().reset_index()
-    all_new_rows = []
-    for i in range(n):
-        earliest_pred = earliest_pred_per_part_order.copy()
-        earliest_pred[pi] = earliest_pred[pi] - i
-        # filter only if lookahead > 2 
-        earliest_pred = earliest_pred[(earliest_pred[oi] - earliest_pred[pi]) > 2]
-        all_new_rows.append(earliest_pred)
-    all_new_rows = pd.concat(all_new_rows, axis=0)
-    all_new_rows  = all_new_rows.reset_index(drop=True)
-    all_new_rows[pq] = 0
-    return all_new_rows
-
-def materialize_zeros(df):
-    """ 
-    Given a waterfall set, materialize data points where data is zero
-    Only performed between "relevant points" reasonable range of 
-    """
-    # Per group, determine known horizons 
-    pass
-
-
-def merge_confusing():
-    # Features joined based on prediction date (ie prediction only "knows" info from the time of prediction.)
-    test_merge = df.merge(cf.drop("OrderQty", axis=1).rename({"Orderidx":"Predidx"}, axis=1), 
-                    on=["part", "Predidx"],   how='left')
-    # Merge consumption features onto DF
-    df = pd.concat([df, 
-                    test_merge.iloc[:, (len(df.columns)-len(test_merge.columns)):]], 
-                    axis=1)
 
 # ADD FEATURES --------------------------------------------------------------------------------
 # Feature naming convention
@@ -179,7 +142,7 @@ def release_gp_variation(agg_frame, col, unit=None):
         ], axis=1).reset_index()
     return release_accuracy
 
-def waterfall_features(frame, extend=True, progress_cb=None):
+def waterfall_features(frame, progress_cb=None):
     """
     progress_cb(step, total, message) — called during the walk-forward loop so
     callers can report progress to a UI.  step is 0-indexed, total is loop length.
@@ -187,30 +150,16 @@ def waterfall_features(frame, extend=True, progress_cb=None):
     df = frame.copy()
     df = df.sort_values(['part', oi, pi]).reset_index(drop=True)
     df['lookahead_wk'] = df.orderidx - df.predidx
+
     df['predqty_lag_qty'] = df.groupby("part").shift(1).predqty
     df['lag_ratio'] = df.predqty_lag_qty/(df.predqty+1)
-    if extend:
-        df = pd.concat([df, extend_predictions(df)],axis=0)
-        df = df.sort_values(['part', oi, pi])
+
     df = grouped_column_statistics(df, value_col=pq, sort_col=pi,
                                    prefix=pq, unit='qty')
 
     df['predqqty_max_qty'] = df.groupby("part")["predqty"].cummax()
-
-    # Walk-forward simultaneous demand (the most expensive loop)
-    unique_idxs = sorted(df.predidx.unique())
-    n_idxs = len(unique_idxs)
-    for step, idx in enumerate(unique_idxs):
-        if progress_cb:
-            progress_cb(step, n_idxs, f'Walk-forward features: week {step + 1} / {n_idxs}')
-        known_info = df[df[pi] <= idx]
-        latest_info = known_info.loc[known_info.groupby(['part', oi])[pi].idxmax()]
-        mask = df[pi] == idx
-        simultaneous_demand = latest_info.groupby([oi])[pq].count()
-        df.loc[mask, 'orderidx_part_count'] = df.loc[mask, oi].map(simultaneous_demand)
-
     df["predqty_1wkdiff_qty"] = df.groupby(["part", oi])[pq].diff()
-
+    df = demand_share_features(df)
     df = prediction_maturity_features(df)
     df = relative_magnitude_features(df)
     df = seasonal_index_features(df, oi)
