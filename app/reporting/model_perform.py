@@ -2,6 +2,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 
+waterfall_color = "#b73333"
+model_color = '#4361ee'
 
 def holdout_report(bundle: dict) -> str:
     """
@@ -44,6 +46,23 @@ def holdout_report(bundle: dict) -> str:
     q_min = min(float(oq.min()), 0)
     q_max = float(max(oq.max(), est.max(), naive.max())) * 1.05
 
+    parts      = df['part'].values
+    order_idx  = df['orderidx'].values
+    pred_idx   = order_idx - df['lookahead_wk'].values
+
+    # customdata columns: [part, order_idx, pred_idx, true_qty, model_qty, naive_qty]
+    cdata = np.column_stack([parts, order_idx, pred_idx, oq, est, naive])
+
+    _hover = (
+        'Part: %{customdata[0]}<br>'
+        'Order wk: %{customdata[1]}<br>'
+        'Pred wk: %{customdata[2]}<br>'
+        'True: %{customdata[3]}<br>'
+        'Model: %{customdata[4]}<br>'
+        'Naive: %{customdata[5]}'
+        '<extra></extra>'
+    )
+
     fig_scatter = go.Figure()
     fig_scatter.add_trace(go.Scatter(
         x=[q_min, q_max], y=[q_min, q_max],
@@ -54,14 +73,18 @@ def holdout_report(bundle: dict) -> str:
     fig_scatter.add_trace(go.Scatter(
         x=oq, y=naive,
         mode='markers',
-        marker=dict(size=4, opacity=0.35, color='#adb5bd'),
+        marker=dict(size=4, opacity=0.35, color=waterfall_color),
         name='Naive (predqty)',
+        customdata=cdata,
+        hovertemplate=_hover,
     ))
     fig_scatter.add_trace(go.Scatter(
         x=oq, y=est,
         mode='markers',
-        marker=dict(size=4, opacity=0.5, color='#4361ee'),
+        marker=dict(size=4, opacity=0.5, color=model_color),
         name='Model',
+        customdata=cdata,
+        hovertemplate=_hover,
     ))
     fig_scatter.update_layout(
         title='Actual vs Predicted Order Qty — holdout set',
