@@ -157,6 +157,13 @@ main {
   color: var(--navy);
   font-weight: 600;
 }
+.form-table th.row-break{
+  background:var(--bg); 
+  font-size:12px; 
+  font-weight:400;
+  padding:8px 16px;                      
+  color:var(--text-muted); 
+}
 .form-table tr:last-child td,
 .form-table tr:last-child th { border-bottom: none; }
 
@@ -418,6 +425,103 @@ label.check-label {
 .heatmap-legend-swatch[data-level="2"] { background: var(--hm2, #40c463); }
 .heatmap-legend-swatch[data-level="3"] { background: var(--hm3, #30a14e); }
 .heatmap-legend-swatch[data-level="4"] { background: var(--hm4, #216e39); }
+/* ── home page ────────────────────────────────────────── */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  max-width: 900px;
+}
+
+.home-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color .15s, box-shadow .15s, transform .1s;
+}
+.home-card:hover {
+  border-color: var(--blue-light);
+  box-shadow: 0 4px 14px rgba(0,0,0,.13);
+  transform: translateY(-2px);
+}
+.home-card-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.home-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 5px;
+}
+.home-card-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── changelog ────────────────────────────────────────── */
+.changelog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-left: 3px solid var(--blue-pale);
+}
+.cl-entry {
+  display: flex;
+  gap: 20px;
+  padding: 16px 0 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.cl-entry:last-child { border-bottom: none; }
+.cl-meta {
+  flex-shrink: 0;
+  width: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 1px;
+}
+.cl-version {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--blue);
+  background: var(--blue-pale);
+  border-radius: 4px;
+  padding: 2px 8px;
+  display: inline-block;
+  width: fit-content;
+}
+.cl-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.cl-body { flex: 1; }
+.cl-summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+.cl-body ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.cl-body li {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin-bottom: 3px;
+}
+
 .heatmap-tooltip {
   position: fixed;
   pointer-events: none;
