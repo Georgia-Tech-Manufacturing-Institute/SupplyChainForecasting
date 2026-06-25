@@ -2,7 +2,7 @@ import pandas as pd
 import sqlite3
 
 from app.prefixe import pre
-from app.core.loader import filter_SQL, augment_waterfall
+from app.core.loader import filter_SQL
 from app.core.parser import week_to_idx
 from app.models.features import (
     waterfall_features, consumption_features, id_features, acc_features
@@ -16,9 +16,6 @@ pq = pre['pq']
 def build_training_dataset(conn, min_orderidx: int = None,
                            max_orderidx: int = None,
                            remove_nans: bool = True,
-                           augment: bool = False,
-                           min_lookahead_to_pad: int=4,
-                           lookahead_pad: int=4,
                            progress_cb=None) -> pd.DataFrame:
     """
     Pull waterfall, consumption, and cost from conn and return a
@@ -32,11 +29,7 @@ def build_training_dataset(conn, min_orderidx: int = None,
     remove_nans  : drop rows where orderqty is NaN (True); otherwise fill 0
     """
     wf   = filter_SQL(conn, table='waterfall_agg')
-    wf['augmented'] = 0
-    if augment: 
-        aug = augment_waterfall(wf, min_lookahead_to_pad, lookahead_pad)
-        aug['augmented'] = 1
-        wf = pd.concat([wf, aug])
+
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
     waterfall   = waterfall_features(wf, progress_cb=progress_cb)
@@ -78,10 +71,6 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     since these are future orders.
     """
     wf   = filter_SQL(conn, table='waterfall_agg')
-
-    # extend lookahead - create dummy predictions for weeks that do not currently have predictions 
-    #  
-
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
 
@@ -100,21 +89,24 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     )
 
     if predidxs is None:
-        # Latest prediction week only (most current waterfall snapshot)
         current_predidx = waterfall['predidx'].max()
-        latest_wf = waterfall[waterfall['predidx'] == current_predidx].copy()
+    elif not isinstance(predidxs, (int, list)):
+        raise ValueError("predidxs must be an int or list of ints")
+
+    # Run acc_features over the full waterfall (needs history), then filter
+    waterfall_with_consump = waterfall.merge(last_consump, on='part', how='left')
+    waterfall_with_consump = acc_features(waterfall_with_consump)
+
+    if predidxs is None:
+        latest_wf = waterfall_with_consump[waterfall_with_consump['predidx'] == current_predidx].copy()
     elif isinstance(predidxs, int):
-        latest_wf = waterfall[waterfall['predidx'] == predidxs].copy()
-    elif isinstance(predidxs, list): 
-        latest_wf = waterfall[(waterfall['predidx']).isin(predidxs)].copy()
+        latest_wf = waterfall_with_consump[waterfall_with_consump['predidx'] == predidxs].copy()
     else:
-        raise ValueError("predidxs mut be a int, list of ints")
-    
-    if len(latest_wf)==0:
+        latest_wf = waterfall_with_consump[waterfall_with_consump['predidx'].isin(predidxs)].copy()
+
+    if len(latest_wf) == 0:
         raise ValueError("Date range returns no predictions")
 
-
-    latest_wf = latest_wf.merge(last_consump, on='part', how='left')
     latest_wf = pd.concat(
         [latest_wf, id_features(latest_wf['part'], 8)], axis=1
     )
