@@ -62,11 +62,8 @@ def _run_training_job(job_id: str, params: dict):
         report('loading', 'Reading SQL tables…')
         df = build_training_dataset(
             conn,
-            min_orderidx=params['min_oi'],
-            max_orderidx=params['max_oi'],
-            augment=params.get('augment', True),
-            min_lookahead_to_pad=params.get('min_la_pad', 4),
-            lookahead_pad=params.get('la_pad', 4),
+            min_orderidx=params.get('min_oi'),
+            max_orderidx=params.get('max_oi'),
             progress_cb=wf_progress,
         )
         conn.close()
@@ -83,7 +80,10 @@ def _run_training_job(job_id: str, params: dict):
         bundle = model_train(df, holdout_weeks=params['holdout'],
                              plant=params['plant'],
                              config={'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0,
-                                     'model_type': params.get('model_type', 'hgb')})
+                                     'model_type':     params.get('model_type', 'hgb'),
+                                     'scale_features': params.get('scale_features', False),
+                                     'qty_scale_col':  params.get('qty_scale_col', 'predqty_max'),
+                                     'wk_divisor':     params.get('wk_divisor', 52.0)})
 
         report('training_b', 'Fitting Model B (predqty ≤ 1)…')
 
@@ -142,11 +142,14 @@ def parse_week_to_idx(week):
 
 
 
-# ── index ─────────────────────────────────────────────────────────────────────
-# HTML base route, just redirects to Load
+# ── index / home ──────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    return redirect(url_for("load"))
+    return redirect(url_for("home"))
+
+@app.route("/home")
+def home():
+    return render_template("home.html", active="home")
 
 
 # ── DATA / Load ───────────────────────────────────────────────────────────────
@@ -201,6 +204,80 @@ def load_coverage(plant):
         return jsonify({"error": "Unknown plant"}), 404
     wf, cf = get_coverage_counts(plant)
     return jsonify({"wf": wf, "cf": cf})
+
+
+# ── MODEL / Explore ───────────────────────────────────────────────────────
+def _week_label(idx):
+    """Convert an orderidx integer to a human-readable 'YYYY Wknn' string."""
+    try:
+        year, week = idx_to_week(int(idx))
+        return f"{year} Wk{week:02d}"
+    except Exception:
+        return str(idx)
+
+
+def _load_model_metadata():
+    """Return a list of dicts summarising every saved model bundle."""
+    model_dir = dirs['saved_models']
+    rows = []
+    if not model_dir.is_dir():
+        return rows
+    for fname in sorted(os.listdir(model_dir)):
+        if not fname.endswith('.pkl'):
+            continue
+        try:
+            bundle = load_model(fname)
+            cfg = bundle.get('config', {})
+            span = bundle.get('train_span')  # tuple of (min_series, max_series)
+
+            min_oi = max_oi = None
+            if span is not None:
+                try:
+                    min_oi = int(span[0]['orderidx'])
+                    max_oi = int(span[1]['orderidx'])
+                except Exception:
+                    pass
+
+            scores_model = scores_naive = None
+            if 'scores' in bundle:
+                sc = bundle['scores']
+                m_row = sc[sc['model'] == 'Combined A+B']
+                n_row = sc[sc['model'] == 'Naive baseline']
+                if not m_row.empty:
+                    scores_model = {
+                        'r2':  round(float(m_row['r2'].iloc[0]),  4),
+                        'mae': round(float(m_row['mae'].iloc[0]), 2),
+                        'mse': round(float(m_row['mse'].iloc[0]), 2),
+                    }
+                if not n_row.empty:
+                    scores_naive = {
+                        'r2':  round(float(n_row['r2'].iloc[0]),  4),
+                        'mae': round(float(n_row['mae'].iloc[0]), 2),
+                        'mse': round(float(n_row['mse'].iloc[0]), 2),
+                    }
+
+            rows.append({
+                'name':         fname,
+                'plant':        bundle.get('plant', '—'),
+                'model_type':   cfg.get('model_type', 'hgb').upper(),
+                'objective':    cfg.get('obj', '—'),
+                'scaled':       bool(bundle.get('scale_config')),
+                'train_start':  _week_label(min_oi) if min_oi is not None else '—',
+                'train_end':    _week_label(max_oi) if max_oi is not None else '—',
+                'n_features':   len(bundle.get('feature_cols', [])),
+                'has_holdout':  'scores' in bundle,
+                'scores_model': scores_model,
+                'scores_naive': scores_naive,
+            })
+        except Exception as exc:
+            rows.append({'name': fname, 'error': str(exc)})
+    return rows
+
+
+@app.route("/explore")
+def explore():
+    models = _load_model_metadata()
+    return render_template("explore.html", active="explore", models=models)
 
 
 # ── DATA / Reports ────────────────────────────────────────────────────────────
@@ -354,10 +431,13 @@ def retrain_start():
             'max_oi':     parse_week_to_idx(latest_order)   if latest_order   else None,
             'holdout':    int(request.form.get("holdout_weeks", "0") or 0),
             'nickname':   request.form.get("model_nickname", "").strip(),
-            'augment':    request.form.get("augment") == "1",
-            'min_la_pad': int(request.form.get("min_part_lookahead_to_pad", 4) or 4),
-            'la_pad':     int(request.form.get("lookahead_padding", 4) or 4),
-            'model_type': model_type,
+            # 'augment':        request.form.get("augment") == "1",
+            # 'min_la_pad':     int(request.form.get("min_part_lookahead_to_pad", 4) or 4),
+            # 'la_pad':         int(request.form.get("lookahead_padding", 4) or 4),
+            'model_type':     model_type,
+            'scale_features': request.form.get("scale_features") == "1",
+            'qty_scale_col':  request.form.get("qty_scale_col", "predqty_max").strip(),
+            'wk_divisor':     float(request.form.get("wk_divisor", 52) or 52),
         }
     except Exception as exc:
         return jsonify({'error': str(exc)}), 400

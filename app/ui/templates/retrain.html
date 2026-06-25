@@ -41,11 +41,16 @@
               </select>
             </td>
           </tr>
+          <tr>
+            <th class="row-label">Model Name</th>
+            <td>
+              <input type="text" name="model_nickname" id="model_nickname"
+                     placeholder="auto-generated from dates" />
+            </td>
+          </tr>
 
           <tr>
-            <th class="row-label" colspan="2"
-                style="background:var(--bg); font-size:12px; font-weight:400;
-                       color:var(--text-muted); padding:8px 16px;">
+            <th class="row-break" colspan="2">
               Order Date Range
             </th>
           </tr>
@@ -63,14 +68,19 @@
             <div class="help-text">Choose the number of weeks to omit from training to check performance </div>
             </th>
             <td>
-              <input type="number" name="holdout_weeks" min="0" max="52" value="0"
+              <input type="number" name="holdout_weeks" min="0" max="52" value="2"
                      style="max-width:80px;" />
               <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">
                 0 = use all data
               </span>
             </td>
           </tr>
-          <tr>
+          <tr>            
+            <th class="row-break" colspan="2">
+              Advanced model parameters
+            </th>
+          </tr>
+  <!-- ──         <tr>
             <th class="row-label">Augment Waterfall
               <div class="help-text">Synthesise missing lookahead observations before training</div>
             </th>
@@ -98,14 +108,37 @@
                 </label>
               </div>
             </td>
-          </tr>
+          </tr> -->
           <tr>
-            <th class="row-label">Model Name</th>
+            <th class="row-label">Scale Features
+              <div class="help-text">Normalise <code>_qty</code> columns by a row-level denominator column and <code>_wk</code> columns by a fixed divisor</div>
+            </th>
             <td>
-              <input type="text" name="model_nickname" id="model_nickname"
-                     placeholder="auto-generated from dates" />
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="scale_toggle" name="scale_features" value="1"
+                       style="width:15px; height:15px; cursor:pointer;" />
+                <span style="font-size:13px;">Scale during feature generation</span>
+              </label>
             </td>
           </tr>
+          <tr id="scale-params" style="display:none;">
+            <th class="row-label">Scale Parameters</th>
+            <td>
+              <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <label style="font-size:13px;">
+                  Qty scale column
+                  <input type="text" name="qty_scale_col" value="predqty_max"
+                         style="width:120px; margin-left:6px;" />
+                </label>
+                <label style="font-size:13px;">
+                  Wk divisor
+                  <input type="number" name="wk_divisor" value="52" min="1"
+                         style="width:60px; margin-left:6px;" />
+                </label>
+              </div>
+            </td>
+          </tr>
+
         </tbody>
       </table>
 
@@ -217,10 +250,10 @@
 
 <script>
 (function () {
-  /* ── augment toggle ─────────────────────────────────────── */
+  /* ── scale toggle ───────────────────────────────────────── */
   (function () {
-    const toggle = document.getElementById('augment_toggle');
-    const params = document.getElementById('augment-params');
+    const toggle = document.getElementById('scale_toggle');
+    const params = document.getElementById('scale-params');
     function sync() { params.style.display = toggle.checked ? '' : 'none'; }
     toggle.addEventListener('change', sync);
     sync();

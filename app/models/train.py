@@ -46,7 +46,42 @@ def score_block(actual, predicted, label, week, records):
     })
 
 
-def _build_XY(df, obj, drop_cols=None):
+_OTHER_SCALE_EXCEPTIONS = set()
+
+def scale_features(X: pd.DataFrame, qty_scale_col: str | None, wk_divisor: float = 52.0,
+                   other_scale: str | None = None) -> pd.DataFrame:
+    """
+    Scale feature columns by suffix convention.
+      _qty cols → divided row-wise by qty_scale_col (a column already in X)
+      _wk  cols → divided by wk_divisor (default 52)
+      other cols → scaled by max or mean across the column if other_scale is 'max' or 'mean'
+                   columns in _OTHER_SCALE_EXCEPTIONS are skipped
+    qty_scale_col must be present in X before calling; it is NOT dropped here.
+    """
+    X = X.copy()
+    if qty_scale_col and qty_scale_col in X.columns:
+        denom = X[qty_scale_col].replace(0, np.nan)
+        qty_cols = [c for c in X.columns if str(c).endswith('_qty') and c != qty_scale_col]
+        if qty_cols:
+            X[qty_cols] = X[qty_cols].div(denom, axis=0)
+    if wk_divisor and wk_divisor != 0:
+        wk_cols = [c for c in X.columns if str(c).endswith('_wk')]
+        if wk_cols:
+            X[wk_cols] = X[wk_cols] / wk_divisor
+    if other_scale in ('max', 'mean'):
+        suffixed = {'_qty', '_wk'}
+        other_cols = [
+            c for c in X.columns
+            if not any(str(c).endswith(s) for s in suffixed) and c not in _OTHER_SCALE_EXCEPTIONS
+        ]
+        for c in other_cols:
+            stat = X[c].max() if other_scale == 'max' else X[c].mean()
+            if stat and stat != 0:
+                X[c] = X[c] / stat
+    return X
+
+
+def _build_XY(df, obj, drop_cols=None, scale_config: dict | None = None):
     """Shared feature/target construction used in both train and predict paths."""
     drop = [oq, 'part'] + (drop_cols or [])
     drop = [c for c in drop if c in df.columns]
@@ -54,6 +89,13 @@ def _build_XY(df, obj, drop_cols=None):
     y, _ = transform_target(target, objective=obj)
     X = df.drop(columns=drop)
     X.columns = [str(c) for c in X.columns]
+    if scale_config:
+        X = scale_features(
+            X,
+            qty_scale_col=scale_config.get('qty_scale_col'),
+            wk_divisor=scale_config.get('wk_divisor', 52.0),
+            other_scale=scale_config.get('other_scale'),
+        )
     return X, y
 
 
@@ -98,10 +140,18 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     obj = config.get('obj', 'log')
     N   = N_THRESHOLD
 
-    df = df.sort_values(['part', oi]).copy()
-    df['Volume'] = df[pq] * df[AMT_COL]
+    scale_config = None
+    if config.get('scale_features'):
+        scale_config = {
+            'qty_scale_col':          config.get('qty_scale_col', 'predqty_max'),
+            'wk_divisor':             float(config.get('wk_divisor', 52.0)),
+            'other_scale': config.get('other_scale'),
+        }
 
-    X, y = _build_XY(df, obj)
+    df = df.sort_values(['part', oi]).copy()
+   # df['Volume'] = df[pq] * df[AMT_COL]
+
+    X, y = _build_XY(df, obj, scale_config=scale_config)
 
     valid     = ~y.isna()
     X_valid   = X[valid]
@@ -112,6 +162,8 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
         split_week = df[oi].max() - holdout_weeks
         train_idx  = df_valid[oi] < split_week
         test_idx   = df_valid[oi] >= split_week
+        if 'augmented' in df:
+            test_idx = test_idx&(df.augmented==0)
     else:
         train_idx = pd.Series(True, index=df_valid.index)
         test_idx  = pd.Series(False, index=df_valid.index)
@@ -128,15 +180,19 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     mB = _make_model(config)
     mB.fit(X_tr_B, y_tr_B)
 
+    part_max_oq = df.groupby('part')[oq].max()
+
     bundle = {
         'plant': plant,
-        'train_span': (X_valid[train_idx].min(), 
+        'train_span': (X_valid[train_idx].min(),
                        X_valid[train_idx].max()),
         'mA': mA,
         'mB': mB,
         'config': config,
         'size_threshold': N,
         'feature_cols': list(X_valid.columns),
+        'scale_config': scale_config,
+        'part_max_oq': part_max_oq,
     }
 
     if holdout_weeks > 0:
@@ -198,6 +254,8 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     obj  = bundle['config']['obj']
     cols = bundle['feature_cols']
 
+    scale_config = bundle.get('scale_config')
+
     df = df.copy()
     if 'Volume' not in df.columns:
         df['Volume'] = df[pq] * df[AMT_COL]
@@ -205,6 +263,14 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     drop = [c for c in [oq, 'part'] if c in df.columns]
     X = df.drop(columns=drop)
     X.columns = [str(c) for c in X.columns]
+
+    if scale_config:
+        X = scale_features(
+            X,
+            qty_scale_col=scale_config.get('qty_scale_col'),
+            wk_divisor=scale_config.get('wk_divisor', 52.0),
+            other_scale=scale_config.get('other_scale'),
+        )
 
     # Align to training columns; fill any missing with NaN (HistGBR handles it)
     X = X.reindex(columns=cols)
@@ -221,6 +287,12 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     df['adj_volume']   = preds
     amt = df[AMT_COL].replace(0, np.nan)
     df['est_orderqty'] = np.round(df[pq] + preds / amt).fillna(df[pq])
+
+    part_max_oq = bundle.get('part_max_oq')
+    if part_max_oq is not None and 'part' in df.columns:
+        cap = df['part'].map(part_max_oq) * 2
+        df['est_orderqty'] = df['est_orderqty'].clip(upper=cap)
+
     return df
 
 
