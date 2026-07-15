@@ -23,7 +23,7 @@ pre.update({
     'oq': pre['op'] + pre['qs'],
 })
 def idx_to_week(v):
-    return (v // 52-1, v % 52+1)
+    return (v // 52, v % 52)
 
 def week_to_idx(year, week):
     return int(year) * 52 + int(week)
