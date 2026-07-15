@@ -8,33 +8,6 @@ oi = pre['oi']
 oq = pre['oq']
 pq = pre['pq']
 
-# Metadata tracking guy
-class column_units:
-    def __init__(self, unit_map:dict={}):
-        self.unit_map = unit_map
-    def add_column(self, column_name, column_unit):
-        if column_unit in self.unit_map:
-            self.unit_map[column_unit] = column_name
-        else:
-            self.unit_map[column_unit] = [column_name]
-    def add_columns(self, names: list[str], units:list[str]):
-        for name, unit in zip(names, units):
-            self.add_column(name,unit)
-    def add_last_df_column(self, df, column_unit):
-        if isinstance(column_unit, str):
-            column_unit = [column_unit]
-        elif isinstance(column_unit, list):
-            pass
-        else:
-            raise TypeError("Please pass a single unit or a list of units where each unit maps to a column at the end of the df.")
-        # Take advantage of cases where a Dataframe column assignment uses the -1 column index to assign 
-        n = len(column_unit)
-        self.add_columns(df.columns[-n], column_unit)
-    
-
-# Filter Functions -----------------------------------------------------------------------------
-
-
 # Utility functions -----------------------------------------------------------------------------
 
 def grouped_column_statistics(
@@ -89,45 +62,6 @@ def latest_release_per_week(df, groups:list=['part', oi, pi],
 # originating column _ operator _ unit - 
 # Alternatively summarizor _ unit ->  eg. lookahead
 
-def accuracy_features(aligned_frame):
-    df = aligned_frame.copy()
-    df = pd.concat()
-    # Get statistics based on the 
-    for i in sorted(df.Predidx.unique()):
-        # Assume "present" is week i
-        # Iterate through each week and update with past accuracy diagnostics
-        currentweek = df.Predidx==i # Current prediction week 
-        prior_data = df[df.Orderidx < i][['part', pre['pi'], oi, 
-                                        'RelDate', oq, pq, 
-                                        "Lookahead"]] # Update current prediction week
-        # Same part N week accuracy
-        prior_data['Acc'] = prior_data.OrderQty - prior_data.PredQty
-        # per-part agg accuracy 
-        all_past_agg_accuracy = prior_data.groupby("part").Acc.mean()
-        prior_part_order_accuracy = prior_data.groupby("part").Acc.last() # behaves as nth(-1)
-        # past per-part release accuracy
-        #cats = []
-        cats = [all_past_agg_accuracy.rename("All_part_Mean_Acc"),
-            prior_part_order_accuracy.rename("Last_Order_part_Mean_Acc"),]
-        # Rolling
-        for lookback in range(1, 6):
-            recent_history = prior_data[prior_data.Lookahead<=lookback]
-            cats.append(recent_history.groupby("part").Acc.mean().rename(f"roll_part_mean_Acc_LB{lookback}"))
-            cats.append(recent_history.groupby("part").Acc.std().rename(f"roll_part_std_Acc_LB{lookback}"))
-
-        part_acc = pd.concat(cats, axis=1)
-        
-        if len(part_acc) > 0:
-            local_hist_features = release_accuracy.reset_index(drop=True).merge(part_acc, how='inner', on='part')
-            newcols = local_hist_features.columns.difference(['part','RelDate'])
-            df.loc[currentweek, newcols] = (
-                pre_lookat.loc[currentweek]
-                .merge(local_hist_features, on=['part','RelDate'], how='left')
-                .set_index(df.loc[currentweek].index) [newcols]
-            )
-
-    return df
-
 ### Simpler lightweight features
 def release_gp_variation(agg_frame, col, unit=None):
     # agg_frame: df/cf merged frame
@@ -149,68 +83,69 @@ def waterfall_features(frame, progress_cb=None):
     """
     df = frame.copy()
     df = df.sort_values(['part', oi, pi]).reset_index(drop=True)
-    df['lookahead_wk'] = df.orderidx - df.predidx
+    
+    df['lookahead_wk'] = df[oi] - df[pi]
 
-    df['predqty_lag_qty'] = df.groupby("part").shift(1).predqty
-    df['lag_ratio'] = df.predqty_lag_qty/(df.predqty+1)
+    # Last prediction for the same part
+    df[f'{pq}_lag_qty'] = df.groupby("part").shift(1)[pq]
+    df['lag_ratio'] = df[f'{pq}_lag_qty']/(df[pq]+1)
 
     df = grouped_column_statistics(df, value_col=pq, sort_col=pi,
                                    prefix=pq, unit='qty')
+    
+    # Part overall history 
+    df[f'{pq}_max_qty'] = df.groupby("part")[pq].cummax()
 
-    df['predqqty_max_qty'] = df.groupby("part")["predqty"].cummax()
-    df["predqty_1wkdiff_qty"] = df.groupby(["part", oi])[pq].diff()
     df = demand_share_features(df)
     df = prediction_maturity_features(df)
     df = relative_magnitude_features(df)
-    df = seasonal_index_features(df, oi)
+    df = seasonal_index_features(df, oi) 
     df = seasonal_index_features(df, pi)
     return df
 
-def normalize_qty_features(frame, div_col = 'predqqty_max_qty'):
+def normalize_qty_features(frame, div_col = f'{pq}_max_qty'):
     qty_cols = [c for c in frame.columns if c.endswith('_qty')]
     frame[qty_cols] = frame[qty_cols] / (frame[div_col]+1)
 
-def n_prior_pred(wf, n_weeks):
-    temp = wf.copy()
-    temp['predidx'] = wf.predidx - n_weeks
-    suf =  f'_{n_weeks}wk_prior'
-    mrged = wf.merge( temp,  how='left', 
-                     on=['part', 'orderidx',  'predidx'], 
-                     suffixes=('', suf)).fillna(0)
-    return (mrged[[c for c in mrged.columns if c.endswith(suf)]]).astype(int)
-
 def consumption_features(frame):
+    # Consumption data has one row per part per order week
     cf = frame.copy()
+
+    # Ignore parts that are never consumed
+    maxcon = cf.groupby('part')[oq].max()
+    cf[cf.part.isin(maxcon[maxcon>0].index)]
+    
     # Create features based on consumption data - for each order date, what was the context of prior ordering behavior
     newcf = cf[["part", oi, oq]].sort_values(["part", oi])
-    for i in range(2,6): # rolling is okay since we have all data every map.
+    part_group = newcf.groupby("part")
+    newcf[f'{oq}_1wkdiff_qty'] = part_group[oq].diff()
+    newcf[f'{oq}_4wkdiff_qty'] = part_group[oq].diff(4)
+
+    for i in range(2,5): # Local history for ordering - how past 
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
-    # Prior order
-    newcf[f'part_lag1_qty'] = newcf.groupby("part").shift(1)[oq]
-    newcf[f'part_lag2_qty'] = newcf.groupby("part").shift(2)[oq]
-    # Time between orders: captures ordering regularity
-    newcf['order_gap_wk'] = newcf.groupby("part")[oi].diff()
-    newcf['order_gap_mean_wk'] = (
-        newcf.groupby("part")['order_gap_wk']
-        .transform(lambda s: s.expanding().mean())
-    )
-    newcf['order_gap_std_wk'] = (
-        newcf.groupby("part")['order_gap_wk']
-        .transform(lambda s: s.expanding().std())
-    )
+    # Overall 
+    newcf = grouped_column_statistics(newcf, value_col=oq, prefix=oq, unit='qty', sort_col=oq)
+
+    # Time since last orders: ordering regularity
+    newcf[f'{oq}_gap_wk'] = part_group[oi].diff()
+    newcf = grouped_column_statistics(newcf, value_col=f'{oq}_gap_wk', prefix=f'{oq}_gap', unit='wk', sort_col=oq)
     return newcf
 
 
 def prediction_maturity_features(df):
     """How far along in the prediction lifecycle is each part/order pair?"""
     df = df.copy()
-    # Number of prior predictions issued for this order (0-indexed: 0 = first prediction)
-    df['n_prior_preds'] = df.groupby(['part', oi]).cumcount()
-    # Predqty at first prediction for this order
-    first_predqty = df.groupby(['part', oi])[pq].transform('first')
-    df['first_predqty'] = first_predqty
+    ## Order specific info
+    part_order_group = df.groupby(['part', oi])
+    # Number of prior predictions issued for this order (0-indexed: 0 = first prediction)'
+    df['n_prior_preds'] = part_order_group.cumcount()
+    # Order earliest predqty 
+    first_predqty = part_order_group[pq].transform('first')
+    df[f'first_{pq}'] = first_predqty
+    # Change since last order for the same date
+    df[f'{pq}_1wkdiff_qty'] = part_order_group[pq].diff()
     # Total drift from the initial prediction
-    df['predqty_total_drift'] = df[pq] - first_predqty
+    df[f'{pq}_total_drift'] = df[pq] - first_predqty
     # Ratio of current prediction to the first prediction (1.0 = unchanged)
     df['first_to_current_ratio'] = df[pq] / (first_predqty + 1)
     return df
@@ -219,8 +154,8 @@ def prediction_maturity_features(df):
 def relative_magnitude_features(df):
     """Predqty relative to this part's historical distribution (requires expanding stats already computed)."""
     df = df.copy()
-    df['predqty_vs_mean_ratio'] = df[pq] / (df['predqty_mean_qty'] + 1)
-    df['predqty_vs_max_ratio'] = df[pq] / (df['predqqty_max_qty'] + 1)
+    df[f'{pq}_vs_mean_ratio'] = df[pq] / (df[f'{pq}_mean_qty'] + 1)
+    df[f'{pq}_vs_max_ratio'] = df[pq] / (df[f'{pq}_max_qty'] + 1)
     return df
 
 
@@ -273,10 +208,11 @@ def acc_features(real_data):
         cats = [all_past_agg_accuracy.rename("part_acc_mean_qty")
                 ]
         # Rolling
-        for lookback in range(3, 8):
+        for lookback in range(3, 6):
             recent_history = prior_data[prior_data['lookahead_wk']<=lookback]
             cats.append(recent_history.groupby("part")[error_name].mean().rename(f"part_acc_rollmean{lookback}_qty"))
             cats.append(recent_history.groupby("part")[error_name].std().rename(f"part_acc_rollstd{lookback}_qty"))
+        
         part_acc = pd.concat(cats, axis=1).reset_index(drop=False)
         part_acc[pre['pi']] = i 
         part_acc_history.append(part_acc)
