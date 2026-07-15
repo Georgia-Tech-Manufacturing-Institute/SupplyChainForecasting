@@ -13,6 +13,46 @@ oq = pre['oq']
 
 AMT_COL = 'amount'
 N_THRESHOLD = 1  # split point: Model A trains on predqty > N, Model B on <= N
+TARGET_MODES = ('raw', 'volume', 'qty')
+DEFAULT_TARGET_MODE = 'qty'
+
+
+def raw_target(df, target_mode):
+    """
+    Raw (untransformed) prediction target.
+      'raw'    → direct order quantity: orderqty
+      'volume' → dollar-value adjustment: (orderqty - predqty) * amount
+      'qty'    → raw quantity adjustment (error): orderqty - predqty
+    """
+    if target_mode == 'raw':
+        return df[oq]
+    err = df[oq] - df[pq]
+    if target_mode == 'volume':
+        return err * df[AMT_COL]
+    if target_mode == 'qty':
+        return err
+    raise ValueError(f"Unknown target_mode: {target_mode!r}. Use 'raw', 'volume', or 'qty'.")
+
+
+def target_to_qty(preds_raw: np.ndarray, amt: np.ndarray, target_mode: str,
+                  pq: np.ndarray = None) -> np.ndarray:
+    """
+    Convert an inverse-transformed raw target prediction into a qty-space delta,
+    mirroring raw_target's forward transform. 'raw' mode predicts an absolute
+    order quantity rather than a delta from pq, so pq must be supplied to
+    recover the equivalent delta (preds_raw - pq).
+    """
+    if target_mode == 'volume':
+        amt_safe = np.where(amt == 0, np.nan, amt)
+        return preds_raw / amt_safe
+    if target_mode == 'qty':
+        return preds_raw
+    if target_mode == 'raw':
+        if pq is None:
+            raise ValueError("pq is required to convert a 'raw' target prediction to a qty delta")
+        return preds_raw - pq
+
+    raise ValueError(f"Unknown target_mode: {target_mode!r}. Use 'raw', 'volume', or 'qty'.")
 
 
 def transform_target(y, objective):
@@ -81,11 +121,12 @@ def scale_features(X: pd.DataFrame, qty_scale_col: str | None, wk_divisor: float
     return X
 
 
-def _build_XY(df, obj, drop_cols=None, scale_config: dict | None = None):
+def build_XY(df, obj, drop_cols=None, scale_config: dict | None = None,
+             target_mode: str = DEFAULT_TARGET_MODE):
     """Shared feature/target construction used in both train and predict paths."""
     drop = [oq, 'part'] + (drop_cols or [])
     drop = [c for c in drop if c in df.columns]
-    target = (df[oq] - df[pq]) * df[AMT_COL]
+    target = raw_target(df, target_mode)
     y, _ = transform_target(target, objective=obj)
     X = df.drop(columns=drop)
     X.columns = [str(c) for c in X.columns]
@@ -99,7 +140,7 @@ def _build_XY(df, obj, drop_cols=None, scale_config: dict | None = None):
     return X, y
 
 
-def _make_model(config: dict):
+def make_model(config: dict):
     """Return an untrained estimator for the requested model_type."""
     mtype = config.get('model_type', 'hgb')
     if mtype == 'hgb':
@@ -140,6 +181,11 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     obj = config.get('obj', 'log')
     N   = N_THRESHOLD
 
+    target_mode = config.get('target_mode', DEFAULT_TARGET_MODE)
+    if target_mode not in TARGET_MODES:
+        raise ValueError(f"Unknown target_mode: {target_mode!r}. Use 'raw', 'volume', or 'qty'.")
+    config['target_mode'] = target_mode  # normalize onto config so it's always saved in the bundle
+
     scale_config = None
     if config.get('scale_features'):
         scale_config = {
@@ -149,9 +195,8 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
         }
 
     df = df.sort_values(['part', oi]).copy()
-   # df['Volume'] = df[pq] * df[AMT_COL]
 
-    X, y = _build_XY(df, obj, scale_config=scale_config)
+    X, y = build_XY(df, obj, scale_config=scale_config, target_mode=target_mode)
 
     valid     = ~y.isna()
     X_valid   = X[valid]
@@ -171,13 +216,13 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
     # Model A: predqty > N
     train_hi   = train_idx & (df_valid[pq] > N)
     X_tr_A, y_tr_A = X_valid[train_hi], y_valid[train_hi]
-    mA = _make_model(config)
+    mA = make_model(config)
     mA.fit(X_tr_A, y_tr_A)
 
     # Model B: predqty <= N
     train_lo   = train_idx & (df_valid[pq] <= N)
     X_tr_B, y_tr_B = X_valid[train_lo], y_valid[train_lo]
-    mB = _make_model(config)
+    mB = make_model(config)
     mB.fit(X_tr_B, y_tr_B)
 
     part_max_oq = df.groupby('part')[oq].max()
@@ -212,16 +257,16 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
         preds[mask_hi] = preds_A
         preds[mask_lo] = preds_B
 
-        baseline = (pq_test * amt_test).values
+        baseline = np.zeros(len(X_test))  # naive: predict no adjustment to predqty
         records  = []
         score_block(y_raw, preds,    "Combined A+B", split_week, records)
         score_block(y_raw, baseline, "Naive baseline", split_week, records)
         bundle['scores'] = pd.DataFrame(records)
 
-        # Per-row holdout data for reporting (qty space, not volume space)
-        amt_safe = amt_test.replace(0, np.nan).values
-        est_qty  = np.round(pq_test.values + preds / amt_safe)
-        est_qty  = np.where(np.isnan(est_qty), pq_test.values, est_qty)
+        # Per-row holdout data for reporting (qty space, not target_mode space)
+        qty_delta = target_to_qty(preds, amt_test.values, target_mode, pq=pq_test.values)
+        est_qty   = np.round(pq_test.values + qty_delta)
+        est_qty   = np.where(np.isnan(est_qty), pq_test.values, est_qty)
 
         base_cols = ['part', oi, oq, pq]
         if 'lookahead_wk' in df_valid.columns:
@@ -252,13 +297,12 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     mB   = bundle['mB']
     N    = bundle['size_threshold']
     obj  = bundle['config']['obj']
+    target_mode = bundle['config'].get('target_mode', DEFAULT_TARGET_MODE)
     cols = bundle['feature_cols']
 
     scale_config = bundle.get('scale_config')
 
     df = df.copy()
-    if 'Volume' not in df.columns:
-        df['Volume'] = df[pq] * df[AMT_COL]
 
     drop = [c for c in [oq, 'part'] if c in df.columns]
     X = df.drop(columns=drop)
@@ -285,13 +329,15 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
         preds[mask_lo] = inverse_transform_target(mB.predict(X[mask_lo]), obj)
 
     df['adj_volume']   = preds
-    amt = df[AMT_COL].replace(0, np.nan)
-    df['est_orderqty'] = np.round(df[pq] + preds / amt).fillna(df[pq])
+    qty_delta = target_to_qty(preds, df[AMT_COL].values, target_mode, pq=df[pq].values)
+    df['est_orderqty'] = np.round(df[pq].values + qty_delta)
+    missing = df['est_orderqty'].isna()
+    df.loc[missing, 'est_orderqty'] = df.loc[missing, pq]
 
     part_max_oq = bundle.get('part_max_oq')
     if part_max_oq is not None and 'part' in df.columns:
-        cap = df['part'].map(part_max_oq) * 2
-        df['est_orderqty'] = df['est_orderqty'].clip(upper=cap)
+        cap = df['part'].map(part_max_oq) 
+        df['est_orderqty'] = df['est_orderqty'].clip(upper=cap, lower=0)
 
     return df
 
