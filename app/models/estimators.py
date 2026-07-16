@@ -19,10 +19,10 @@ class NaNAwareMLPRegressor(BaseEstimator, RegressorMixin):
 
     def __init__(
         self,
-        hidden_layer_sizes=(128, 64, 32),
+        hidden_layer_sizes=(64, 128, 64, 32),
         activation='relu',
         alpha=1e-3,
-        max_iter=1000,
+        max_iter=5000,
         early_stopping=True,
         validation_fraction=0.1,
         random_state=42,
