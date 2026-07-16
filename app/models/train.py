@@ -76,11 +76,16 @@ def inverse_transform_target(y_pred, objective):
 
 
 def score_block(actual, predicted, label, week, records):
+    if isinstance(actual, pd.Series):
+        actual = actual.values
+    if isinstance(predicted, pd.Series):
+        predicted = predicted.values
+
     records.append({
         "model": label,
         "week":  week,
         "n":     len(actual),
-        "r2":    r2_score(actual, predicted),
+        "r2":    abs(r2_score(actual, predicted)),
         "mae":   np.abs(actual - predicted).mean(),
         "mse":   mean_squared_error(actual, predicted),
     })
@@ -257,29 +262,30 @@ def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
         preds[mask_hi] = preds_A
         preds[mask_lo] = preds_B
 
-        baseline = np.zeros(len(X_test))  # naive: predict no adjustment to predqty
-        records  = []
-        score_block(y_raw, preds,    "Combined A+B", split_week, records)
-        score_block(y_raw, baseline, "Naive baseline", split_week, records)
-        bundle['scores'] = pd.DataFrame(records)
-
-        # Per-row holdout data for reporting (qty space, not target_mode space)
-        qty_delta = target_to_qty(preds, amt_test.values, target_mode, pq=pq_test.values)
-        est_qty   = np.round(pq_test.values + qty_delta)
-        est_qty   = np.where(np.isnan(est_qty), pq_test.values, est_qty)
 
         base_cols = ['part', oi, oq, pq]
         if 'lookahead_wk' in df_valid.columns:
             base_cols.append('lookahead_wk')
         holdout_df = df_valid[test_idx][base_cols].copy().reset_index(drop=True)
-        holdout_df['est_orderqty']   = est_qty
         holdout_df['naive_orderqty'] = pq_test.values
+        
+        # Per-row holdout data for reporting (qty space, not target_mode space)
+        qty_delta = target_to_qty(preds, amt_test.values, target_mode, pq=pq_test.values)
+        est_qty   = np.round(pq_test.values + qty_delta)
+        est_qty   = np.where(np.isnan(est_qty), pq_test.values, est_qty)
+
+        cap = holdout_df.part.map(part_max_oq)
+        holdout_df['est_orderqty'] = pd.Series(est_qty).clip(0, cap)
+
         if 'lookahead_wk' not in holdout_df.columns:
             holdout_df['lookahead_wk'] = (
                 df_valid[test_idx][oi].values - df_valid[test_idx]['predidx'].values
             )
         bundle['holdout_df'] = holdout_df
-
+        records  = []
+        score_block(holdout_df[oq], holdout_df['est_orderqty'], "Combined A+B", split_week, records)
+        score_block(holdout_df[oq], holdout_df['naive_orderqty'], "Naive baseline", split_week, records)
+        bundle['scores'] = pd.DataFrame(records)
     return bundle
 
 
