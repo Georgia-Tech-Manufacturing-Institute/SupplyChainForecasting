@@ -8,6 +8,7 @@ from app.models.features import (
     waterfall_features, consumption_features, id_features, acc_features
 )
 
+pi = pre['pi']
 oi = pre['oi']
 oq = pre['oq']
 pq = pre['pq']
@@ -38,9 +39,11 @@ def build_training_dataset(conn, min_orderidx: int = None,
     merged = (
         waterfall
         .merge(consumption, on=['part', oi], how='left')
-        .sort_values(['predidx', 'part', oi])
+        .sort_values([pi, 'part', oi])
     )
     merged = acc_features(merged)
+    merged = pd.concat([merged,
+                        id_features(merged['part'], 8)], axis=1)
 
     lo = min_orderidx if min_orderidx is not None else cf[oi].min()
     hi = max_orderidx if max_orderidx is not None else wf[oi].max()
@@ -58,6 +61,12 @@ def build_training_dataset(conn, min_orderidx: int = None,
         .last()[['part', 'amount']]
     )
     real_data = real_data.merge(latest_cost, how='left', on='part')
+     
+    # After creating features, we don't need to keep columns with no data
+    # assumes that if we have consumption info in a week, we have
+    week_counts = real_data.groupby(oi)[oq].count() 
+    real_data = real_data[real_data[oi].isin(week_counts[week_counts>0].index) 
+                          & real_data[oq].isna()]
 
     return real_data.reset_index(drop=True)
 
@@ -89,7 +98,7 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     )
 
     if predidxs is None:
-        current_predidx = waterfall['predidx'].max()
+        current_predidx = waterfall[pi].max()
     elif not isinstance(predidxs, (int, list)):
         raise ValueError("predidxs must be an int or list of ints")
 
@@ -98,11 +107,11 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     waterfall_with_consump = acc_features(waterfall_with_consump)
 
     if predidxs is None:
-        latest_wf = waterfall_with_consump[waterfall_with_consump['predidx'] == current_predidx].copy()
+        latest_wf = waterfall_with_consump[waterfall_with_consump[pi] == current_predidx].copy()
     elif isinstance(predidxs, int):
-        latest_wf = waterfall_with_consump[waterfall_with_consump['predidx'] == predidxs].copy()
+        latest_wf = waterfall_with_consump[waterfall_with_consump[pi] == predidxs].copy()
     else:
-        latest_wf = waterfall_with_consump[waterfall_with_consump['predidx'].isin(predidxs)].copy()
+        latest_wf = waterfall_with_consump[waterfall_with_consump[pi].isin(predidxs)].copy()
 
     if len(latest_wf) == 0:
         raise ValueError("Date range returns no predictions")
