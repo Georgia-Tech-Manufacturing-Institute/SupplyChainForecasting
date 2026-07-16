@@ -75,10 +75,57 @@
               </span>
             </td>
           </tr>
-          <tr>            
+          <tr>
             <th class="row-break" colspan="2">
               Advanced model parameters
             </th>
+          </tr>
+          <tr>
+            <th class="row-label">Target
+              <div class="help-text">What the model predicts, passed to the model config as <code>target_mode</code></div>
+            </th>
+            <td>
+              <select name="target_mode" id="target_mode">
+                <option value="qty" selected>Error (order − pred qty)</option>
+                <option value="volume">Volume Error (error × amount)</option>
+                <option value="raw">Raw (order qty)</option>
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <th class="row-label">Objective Transformation
+              <div class="help-text">Target transform applied before fitting, passed to the model config as <code>obj</code></div>
+            </th>
+            <td>
+              <select name="objective" id="objective">
+                <option value="raw">Raw</option>
+                <option value="log" selected>Log</option>
+                <option value="sqrt">Sqrt</option>
+              </select>
+            </td>
+          </tr>
+          <tr id="loss-row">
+            <th class="row-label">Loss Function
+              <div class="help-text">Loss function used to fit the gradient boosting model</div>
+            </th>
+            <td>
+              <select name="loss" id="loss">
+                <option value="absolute_error" selected>Absolute Error</option>
+                <option value="squared_error">Squared Error</option>
+                <option value="poisson">Poisson</option>
+                <option value="quantile">Quantile</option>
+                <option value="gamma">Gamma</option>
+              </select>
+            </td>
+          </tr>
+          <tr id="l2-row">
+            <th class="row-label">L2 Regularization
+              <div class="help-text">L2 regularization strength (gradient boosting only)</div>
+            </th>
+            <td>
+              <input type="number" name="l2" id="l2" value="1.0" min="0" step="0.1"
+                     style="max-width:80px;" />
+            </td>
           </tr>
   <!-- ──         <tr>
             <th class="row-label">Augment Waterfall
@@ -265,6 +312,20 @@
     function syncScale() { params.style.display = toggle.checked ? '' : 'none'; }
     toggle.addEventListener('change', syncScale);
     syncScale();
+  })();
+
+  /* ── loss / l2 visibility (gradient boosting only) ──────── */
+  (function () {
+    const sel     = document.getElementById('model_type');
+    const lossRow = document.getElementById('loss-row');
+    const l2Row   = document.getElementById('l2-row');
+    function syncHgbParams() {
+      const show = sel.value === 'hgb';
+      lossRow.style.display = show ? '' : 'none';
+      l2Row.style.display   = show ? '' : 'none';
+    }
+    sel.addEventListener('change', syncHgbParams);
+    syncHgbParams();
   })();
 
   /* ── nickname suggestion ─────────────────────────────────── */

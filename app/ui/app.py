@@ -79,7 +79,10 @@ def _run_training_job(job_id: str, params: dict):
         report('training_a', f'Fitting Model A (predqty > {1})…')
         bundle = model_train(df, holdout_weeks=params['holdout'],
                              plant=params['plant'],
-                             config={'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0,
+                             config={'obj':  params.get('objective', 'log'),
+                                     'loss': params.get('loss', 'absolute_error'),
+                                     'l2':   params.get('l2', 1.0),
+                                     'target_mode':    params.get('target_mode', 'qty'),
                                      'model_type':     params.get('model_type', 'hgb'),
                                      'scale_features': params.get('scale_features', False),
                                      'qty_scale_col':  params.get('qty_scale_col', 'predqty_max'),
@@ -245,7 +248,7 @@ def _load_model_metadata():
                 n_row = sc[sc['model'] == 'Naive baseline']
                 if not m_row.empty:
                     scores_model = {
-                        'r2':  round(float(m_row['r2'].iloc[0]),  4),
+                        'r2':  abs(round(float(m_row['r2'].iloc[0]),  4)),
                         'mae': round(float(m_row['mae'].iloc[0]), 2),
                         'mse': round(float(m_row['mse'].iloc[0]), 2),
                     }
@@ -261,6 +264,7 @@ def _load_model_metadata():
                 'plant':        bundle.get('plant', '—'),
                 'model_type':   cfg.get('model_type', 'hgb').upper(),
                 'objective':    cfg.get('obj', '—'),
+                'target_mode':  cfg.get('target_mode', '—'),
                 'scaled':       bool(bundle.get('scale_config')),
                 'train_start':  _week_label(min_oi) if min_oi is not None else '—',
                 'train_end':    _week_label(max_oi) if max_oi is not None else '—',
@@ -435,9 +439,14 @@ def retrain_start():
             # 'min_la_pad':     int(request.form.get("min_part_lookahead_to_pad", 4) or 4),
             # 'la_pad':         int(request.form.get("lookahead_padding", 4) or 4),
             'model_type':     model_type,
-            'scale_features': request.form.get("scale_features") == "1",
-            'qty_scale_col':  request.form.get("qty_scale_col", "predqty_max").strip(),
-            'wk_divisor':     float(request.form.get("wk_divisor", 52) or 52),
+            'target_mode':    request.form.get("target_mode", "qty").strip(),
+            'objective':      request.form.get("objective", "log").strip(),
+            'loss':           request.form.get("loss", "absolute_error").strip(),
+            'l2':             float(request.form.get("l2", 1.0) or 1.0),
+            'scale_features':          request.form.get("scale_features") == "1",
+            'qty_scale_col':           request.form.get("qty_scale_col", "predqty_max").strip(),
+            'wk_divisor':              float(request.form.get("wk_divisor", 52) or 52),
+            'other_scale': request.form.get("other_scale") or None,
         }
     except Exception as exc:
         return jsonify({'error': str(exc)}), 400

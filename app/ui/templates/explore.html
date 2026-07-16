@@ -73,6 +73,7 @@
         <th rowspan="2">Model File</th>
         <th rowspan="2">Plant</th>
         <th rowspan="2">Type</th>
+        <th rowspan="2">Target</th>
         <th rowspan="2">Objective</th>
         <th rowspan="2">Scaled</th>
         <th rowspan="2">Features</th>
@@ -94,7 +95,7 @@
         {% if m.get('error') %}
           <tr class="err-row">
             <td class="model-name">{{ m.name }}</td>
-            <td colspan="13">⚠ {{ m.error }}</td>
+            <td colspan="14">⚠ {{ m.error }}</td>
           </tr>
         {% else %}
           <tr>
@@ -112,6 +113,7 @@
                 <span class="tag tag-other">{{ t }}</span>
               {% endif %}
             </td>
+            <td>{{ m.target_mode }}</td>
             <td>{{ m.objective }}</td>
             <td>
               {% if m.scaled %}
