@@ -27,8 +27,8 @@ def holdout_report(bundle: dict) -> str:
     ss_res_m   = float(np.sum((oq - est)   ** 2))
     ss_res_n   = float(np.sum((oq - naive) ** 2))
     ss_tot     = float(np.sum((oq - oq.mean()) ** 2))
-    model_r2   = 1 - ss_res_m / ss_tot if ss_tot else float('nan')
-    naive_r2   = 1 - ss_res_n / ss_tot if ss_tot else float('nan')
+    model_r2   = abs(1 - ss_res_m / ss_tot) if ss_tot else float('nan')
+    naive_r2   = abs(1 - ss_res_n / ss_tot) if ss_tot else float('nan')
     n_rows     = len(df)
     mae_lift   = (naive_mae - model_mae) / naive_mae * 100 if naive_mae else 0
 
