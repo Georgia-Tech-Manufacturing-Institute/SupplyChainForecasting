@@ -4,13 +4,14 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/train.css') }}" />
 <style>
-.pred-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pred-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
 .pred-table th { background: var(--surface); border-bottom: 2px solid var(--border);
                  padding: 6px 10px; text-align: left; font-weight: 600; }
 .pred-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
 .pred-table tr:hover td { background: var(--surface); }
 .result-count { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
-.table-scroll  { max-height: 480px; overflow-y: auto; margin-top: 12px; justify-content: center;}
+.wide-card { max-width: none; overflow: visible; padding: 16px; }
+.table-scroll  { max-height: 480px; overflow: auto; margin-top: 12px; }
 .model-info { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
 .model-info dt { font-weight: 600; margin-top: 8px; }
 .model-info dd { margin: 2px 0 0 0; color: var(--text-muted); }
@@ -36,7 +37,7 @@
           <tr>
           <th>Choose Model:</th>
           <td>
-            <select name="model" style="max-width:260px;">
+            <select id="modelSelect" name="model" style="max-width:260px;">
               {% for m in models %}
                 <option value="{{ m }}"
                   {% if request.form.get('model', models[0] if models else '') == m %}selected{% endif %}>
@@ -147,14 +148,10 @@
   </div>
 </div>
 
-<div class="helper-sidebar">
-  <div id="static-description" class="report-description">
-    <div id="page-info"  class="desc-title"> About predictions</div>
-    <div id="page-desc">This page uses a previously trained model to create new predictions. Models can be compared in the Evaluate tab to get an idea of how it performs on unknown data. The "Prediction Week" parameter uses
-    </div>
-  </div>
 
+<div class="helper-sidebar">
   <dl id="model-info" class="model-info" style="display:none;">
+    <div class="desc-title"> <dd id="selectedModel">—</dd></div>
     <dt>Trained on</dt>
     <dd id="model-info-trained">—</dd>
 
@@ -164,6 +161,18 @@
     <dt>Predicts on</dt>
     <dd id="model-info-predicts">—</dd>
   </dl>
+
+  <div id="static-description" class="report-description">
+    <div id="page-info"  class="desc-title"> About predictions</div>
+    <div id="page-desc">This page uses a previously trained model to create new predictions. Models can be compared in the Evaluate tab to get an idea of how it performs on unknown data. The trained model only has information available at the time of training. For each model selected, the sidebar loads info on what range of dates the model was trained on and what dates are available for validation and prediction. <br>
+      <b>Validation</b> uses waterfall + consumption info that is <i>new to the model</i> to gauge prediction accuracy. Validation must be performed on weeks where both data is known.
+      <br>
+      <b>Prediction</b> is automatically performed on all cases where future data is not known. If more targeted predictions are needed, uncheck "Predict on all available future waterfall data" and instead select the range of weeks to use; predictions will only be made for those weeks. 
+      <br>
+      <b>Extend Prediction(s)</b> enables a lookahead greater than the waterfall currently forecasts. They can be extended by as many weeks as desired, but behavior may be unstable. 
+    </div>
+  </div>
+
   <div id="model-info-loading" class="muted" style="display:none;">Loading model info…</div>
 </div>
 </div>
@@ -172,12 +181,12 @@
 </div> <!---End Hint Layout --->
 
 
-<div class="card" id="scores-card" style="margin-top:1.5rem; display:none;">
+<div class="card wide-card" id="scores-card" style="margin-top:1.5rem; display:none;">
   <div class="result-count">Performance vs. known consumption since the requested week(s)</div>
   <div class="table-scroll" id="scores-table"></div>
 </div>
 
-<div class="card" id="results-card" style="margin-top:1.5rem; display:none;">
+<div class="card wide-card" id="results-card" style="margin-top:1.5rem; display:none;">
   <div class="result-count" id="results-count"></div>
   <div class="table-scroll" id="results-table"></div>
 </div>
@@ -423,6 +432,20 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 });
+
+const select = document.getElementById('modelSelect');
+const output = document.getElementById('selectedModel');
+
+function updateSelectedModel() {
+    output.textContent = select.options[select.selectedIndex].text;
+}
+
+// Update when selection changes
+select.addEventListener('change', updateSelectedModel);
+
+// Set initial value on page load
+updateSelectedModel();
+
 </script>
 
 {% endblock %}
