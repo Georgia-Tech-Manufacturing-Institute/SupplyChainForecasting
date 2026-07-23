@@ -481,100 +481,167 @@ def reports():
 
 
 # ── MODEL / Predict ───────────────────────────────────────────────────────────
-@app.route("/predict", methods=["GET", "POST"])
+_PREDICT_STAGES = {
+    'queued':      ('Queued',                  0),
+    'loading':     ('Loading model & data',   10),
+    'predicting':  ('Generating predictions', 55),
+    'formatting':  ('Formatting results',     85),
+    'saving':      ('Saving to file',         95),
+    'done':        ('Complete',              100),
+    'error':       ('Error',                   0),
+}
+
+def _run_predict_job(job_id: str, params: dict):
+    job = _JOBS[job_id]
+
+    def report(stage: str, message: str = ''):
+        _, pct = _PREDICT_STAGES.get(stage, ('', 0))
+        job.update({'stage': stage, 'pct': pct,
+                    'message': message or _PREDICT_STAGES[stage][0]})
+
+    try:
+        report('loading', 'Loading model…')
+        bundle = load_model(params['model_name'])
+
+        report('loading', 'Reading waterfall data…')
+        conn = create_connection(plant=params['plant'])
+        df   = build_prediction_dataset(conn, predidxs=params['predidxs'],
+                                        aug_lookahead=params['aug_lookahead'])
+        conn.close()
+
+        if df.empty:
+            job.update({'error': 'No waterfall rows found for the specified parameters.',
+                        'done': True, 'stage': 'error'})
+            return
+
+        import pandas as pd
+        report('predicting', f'Scoring {len(df):,} waterfall rows…')
+        preds     = predict_from_bundle(bundle, df)
+        row_count = len(preds)
+
+        report('formatting', 'Building result tables…')
+        scores_html = None
+        scores = preds.attrs.get('scores')
+        if scores is not None and not scores.empty:
+            scores_html = scores.to_html(index=False, classes='pred-table', border=0)
+
+        # Build pivot: naive (predqty) vs model (est_qty)
+        out = preds.sort_values('predidx').copy()
+        out[['year', 'week']] = pd.DataFrame(
+            out['orderidx'].apply(idx_to_week).tolist(),
+            index=out.index
+        )
+        out = out.rename(columns={'est_orderqty': 'ModelQty',
+                                  'predqty': 'WaterfallQty'})
+        pivot = out.pivot_table(
+            index=['part'],
+            columns=['week', 'year'],
+            values=['WaterfallQty', 'ModelQty'],
+            aggfunc='last',
+        )
+        swapped = pivot.swaplevel(axis=1, i=0, j=-1)
+        pivot = swapped.sort_index(axis=1)
+
+        result = None
+        if params['save_to_file']:
+            report('saving', 'Writing XLSX…')
+            out_dir = dirs['reports']
+            out_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            fname = params['file_path'] or f"predictions_{ts}.xlsx"
+            if not fname.endswith('.xlsx'):
+                fname += '.xlsx'
+            save_path = out_dir / fname
+            pivot.to_excel(save_path)
+            result = str(save_path)
+
+        table_html = pivot.head(50).to_html(index=False, classes='pred-table', border=0)
+        elapsed = round(time.time() - job['started'])
+
+        job.update({
+            'stage':       'done',
+            'pct':         100,
+            'message':     f'{row_count:,} predictions generated',
+            'result':      result,
+            'table_html':  table_html,
+            'row_count':   row_count,
+            'scores_html': scores_html,
+            'elapsed':     elapsed,
+            'done':        True,
+        })
+
+    except Exception as exc:
+        job.update({
+            'stage':   'error',
+            'pct':     job.get('pct', 0),
+            'message': str(exc),
+            'error':   str(exc),
+            'done':    True,
+        })
+
+
+@app.route("/predict", methods=["GET"])
 def predict():
-    result        = None
-    error         = None
-    table_html    = None
-    row_count     = None
-    scores_html   = None
-    models        = _list_models()
-    current_week  = datetime.now().strftime("%G-W%V")
-
-    if request.method == "POST":
-        model_name     = request.form.get("model", "")
-        plant          = request.form.get("plant_source", "arlington").strip().lower()
-        pred_weeks_raw = request.form.get("pred_weeks", "").strip()
-        aug_lookahead  = int(request.form.get("aug_lookahead", "0") or 0)
-        save_to_file   = request.form.get("save_to_file") == "1"
-        file_path      = request.form.get("file_path", "").strip()
-
-        try:
-            predidxs = None
-            if pred_weeks_raw:
-                weeks    = [w.strip() for w in re.split(r'[,\s]+', pred_weeks_raw) if w.strip()]
-                predidxs = [parse_week_to_idx(w) for w in weeks]
-
-            bundle = load_model(model_name)
-            conn   = create_connection(plant=plant)
-            df     = build_prediction_dataset(conn, predidxs=predidxs,
-                                              aug_lookahead=aug_lookahead)
-            conn.close()
-
-            if df.empty:
-                error = "No waterfall rows found for the specified parameters."
-            else:
-                import pandas as pd
-                preds = predict_from_bundle(bundle, df)
-                row_count = len(preds)
-
-                scores = preds.attrs.get('scores')
-                if scores is not None and not scores.empty:
-                    scores_html = scores.to_html(
-                        index=False, classes='pred-table', border=0
-                    )
-
-                # Build pivot: naive (predqty) vs model (est_qty)
-                out = preds.sort_values('predidx').copy()
-                out[['year', 'week']] = pd.DataFrame(
-                    out['orderidx'].apply(idx_to_week).tolist(),
-                    index=out.index
-                )
-                out = out.rename(columns={'est_orderqty': 'ModelQty',
-                                          'predqty': 'WaterfallQty'})
-                pivot = out.pivot_table(
-                    index=['part'],
-                    columns=['week', 'year'],
-                    values=['WaterfallQty', 'ModelQty'],
-                    aggfunc='last',
-                )
-                swapped = pivot.swaplevel(axis=1, i=0, j=-1)
-                pivot = swapped.sort_index(axis=1)       
-                         
-                out_dir = dirs['reports']
-                out_dir.mkdir(parents=True, exist_ok=True)
-                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-                if save_to_file:
-                    fname = file_path or f"predictions_{ts}.xlsx"
-                    if not fname.endswith('.xlsx'):
-                        fname += '.xlsx'
-                    save_path = out_dir / fname
-                    pivot.to_excel(save_path)
-                    result = str(save_path)
-
-                display = pivot.copy()
-                # display['est_qty']    = display['est_qty'].astype(int)
-                # display['adj_volume'] = display['adj_volume'].round(2)
-                table_html = display.head(50).to_html(
-                    index=False, classes='pred-table', border=0
-                )
-
-        except Exception as e:
-            error = str(e)
-
     return render_template(
         "predict.html",
         active="predict",
-        models=models,
+        models=_list_models(),
         plant_sources=PLANT_SOURCES,
-        result=result,
-        error=error,
-        table_html=table_html,
-        row_count=row_count,
-        scores_html=scores_html,
-        current_week=current_week,
+        current_week=datetime.now().strftime("%G-W%V"),
     )
+
+
+@app.route("/predict/start", methods=["POST"])
+def predict_start():
+    model_name     = request.form.get("model", "")
+    plant          = request.form.get("plant_source", "arlington").strip().lower()
+    use_all_future = request.form.get("use_all_future") == "1"
+    week_start     = request.form.get("week_start", "").strip()
+    week_end       = request.form.get("week_end", "").strip()
+    save_to_file   = request.form.get("save_to_file") == "1"
+    file_path      = request.form.get("file_path", "").strip()
+
+    try:
+        aug_lookahead = int(request.form.get("aug_lookahead", "0") or 0)
+        predidxs = None
+        if not use_all_future:
+            if not week_start or not week_end:
+                raise ValueError("Start and end weeks are required when not predicting on all available future waterfall data.")
+            start_idx = parse_week_to_idx(week_start)
+            end_idx   = parse_week_to_idx(week_end)
+            if end_idx < start_idx:
+                raise ValueError("End week must not be before start week.")
+            predidxs = list(range(start_idx, end_idx + 1))
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    params = {
+        'model_name':    model_name,
+        'plant':         plant,
+        'predidxs':      predidxs,
+        'aug_lookahead': aug_lookahead,
+        'save_to_file':  save_to_file,
+        'file_path':     file_path,
+    }
+
+    job_id = uuid.uuid4().hex[:8]
+    _JOBS[job_id] = {
+        'stage': 'queued', 'pct': 0, 'message': 'Queued…',
+        'done': False, 'error': None, 'result': None,
+        'started': time.time(), 'elapsed': None,
+    }
+    threading.Thread(target=_run_predict_job, args=(job_id, params),
+                     daemon=True).start()
+    return jsonify({'job_id': job_id})
+
+
+@app.route("/predict/status/<job_id>")
+def predict_status(job_id):
+    job = _JOBS.get(job_id)
+    if job is None:
+        return jsonify({'error': 'unknown job'}), 404
+    elapsed = round(time.time() - job['started']) if not job['done'] else job.get('elapsed', 0)
+    return jsonify({**job, 'elapsed': elapsed})
 
 
 # ── MODEL / Retrain ───────────────────────────────────────────────────────────

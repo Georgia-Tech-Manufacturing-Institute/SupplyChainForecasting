@@ -2,6 +2,7 @@
 {% block title %}Predict — Forecast Tool{% endblock %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/train.css') }}" />
 <style>
 .pred-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pred-table th { background: var(--surface); border-bottom: 2px solid var(--border);
@@ -10,18 +11,22 @@
 .pred-table tr:hover td { background: var(--surface); }
 .result-count { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
 .table-scroll  { max-height: 480px; overflow-y: auto; margin-top: 12px; justify-content: center;}
+.model-info { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+.model-info dt { font-weight: 600; margin-top: 8px; }
+.model-info dd { margin: 2px 0 0 0; color: var(--text-muted); }
+.model-info .muted { color: var(--text-muted); font-style: italic; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-title">
-  <span class="icon">🎯</span> Predict
+  <span class="icon">🔮</span> Predict
 </div>
 
 <div class="hint-layout">
 
 <div class="card">
-  <form method="POST">
+  <form id="predict-form">
     <table class="form-table">
       <thead>
         <tr><th colspan="2">Make predictions on future ordering</th></tr>
@@ -55,13 +60,29 @@
           </td>
         </tr>
         <tr>
-          <th class="row-label">Prediction Week(s)
-            <div class="help-text">Range of weeks to use to base  <code>2026-W24</code>. Separate multiple with commas. Defaults to current week.</div>
+          <th class="row-label">Prediction Range</th>
+          <td>
+            <label>
+              <input type="checkbox"
+                     id="use_all_future"
+                     name="use_all_future"
+                     value="1"
+                     {% if not request.form or request.form.get('use_all_future') %}checked{% endif %}>
+              Predict on all available future waterfall data
+            </label>
+          </td>
+        </tr>
+        <tr id="week-range-row"
+            {% if not request.form or request.form.get('use_all_future') %}style="display:none;"{% endif %}>
+          <th class="row-label">Week Range
+            <div class="help-text">Waterfall snapshot week(s) to base predictions on.</div>
           </th>
           <td>
-            <input type="text" name="pred_weeks"
-                   placeholder="e.g. 2026-W24, 2026-W25"
-                   value="{{ request.form.get('pred_weeks', current_week) }}" />
+            <input type="week" name="week_start"
+                   value="{{ request.form.get('week_start', current_week) }}" />
+            &nbsp;to&nbsp;
+            <input type="week" name="week_end"
+                   value="{{ request.form.get('week_end', current_week) }}" />
           </td>
         </tr>
         <tr>
@@ -100,21 +121,50 @@
     </table>
 
     <div class="action-row">
-      <button type="submit" class="btn-run">Make Predictions</button>
-
-      {% if error %}
-        <span class="error-banner">✖ {{ error }}</span>
-      {% endif %}
+      <button type="submit" class="btn-run" id="predict-btn">Make Predictions</button>
+      <span id="predict-start-error" class="error-banner" style="display:none;"></span>
     </div>
   </form>
+
+  <!-- ── progress panel (shown after submit) ──────────────── -->
+  <div id="progress-panel">
+
+    <div class="stage-row" id="stage-row">
+      <!-- built by JS -->
+    </div>
+
+    <div class="bar-wrap">
+      <div class="bar-fill" id="bar-fill"></div>
+    </div>
+
+    <div class="status-line">
+      <span id="status-msg">Starting…</span>
+      <span class="status-timer" id="status-timer">0s</span>
+    </div>
+
+    <div class="result-banner" id="predict-success" style="display:none;"></div>
+    <div class="error-banner" id="predict-fail" style="display:none;"></div>
+  </div>
 </div>
 
 <div class="helper-sidebar">
   <div id="static-description" class="report-description">
     <div id="page-info"  class="desc-title"> About predictions</div>
-    <div id="page-desc">This page uses a previously trained model to create new predictions. Models can be compared in the Evaluate tab to get an idea of how it performs on unknown data. The "Prediction Week" parameter uses 
+    <div id="page-desc">This page uses a previously trained model to create new predictions. Models can be compared in the Evaluate tab to get an idea of how it performs on unknown data. The "Prediction Week" parameter uses
     </div>
   </div>
+
+  <dl id="model-info" class="model-info" style="display:none;">
+    <dt>Trained on</dt>
+    <dd id="model-info-trained">—</dd>
+
+    <dt>Validates on</dt>
+    <dd id="model-info-validates">—</dd>
+
+    <dt>Predicts on</dt>
+    <dd id="model-info-predicts">—</dd>
+  </dl>
+  <div id="model-info-loading" class="muted" style="display:none;">Loading model info…</div>
 </div>
 </div>
 
@@ -122,29 +172,15 @@
 </div> <!---End Hint Layout --->
 
 
-{% if table_html %}
-<div class="card" style="margin-top:1.5rem;">
-  <div class="result-count">
-    Showing first 200 of <strong>{{ row_count }}</strong> rows &nbsp;|&nbsp;
-    {% if result %}
-      XLSX saved to <code>{{ result }}</code>
-    {% endif %}
-  </div>
-  <div class="table-scroll">
-    {{ table_html | safe }}
-  </div>
-</div>
-{% elif result and not error %}
-
-<div class="card" style="margin-top:1.5rem;">
-  <div class="result-banner">
-    Predictions saved to<br/>
-    <span class="preview-path">{{ result }}</span>
-  </div>
+<div class="card" id="scores-card" style="margin-top:1.5rem; display:none;">
+  <div class="result-count">Performance vs. known consumption since the requested week(s)</div>
+  <div class="table-scroll" id="scores-table"></div>
 </div>
 
- 
-{% endif %}
+<div class="card" id="results-card" style="margin-top:1.5rem; display:none;">
+  <div class="result-count" id="results-count"></div>
+  <div class="table-scroll" id="results-table"></div>
+</div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -155,6 +191,237 @@ document.addEventListener("DOMContentLoaded", function () {
             fileRow.style.display = checkbox.checked ? "" : "none";
         });
     }
+
+    const allFutureCheckbox = document.getElementById("use_all_future");
+    const weekRangeRow      = document.getElementById("week-range-row");
+    if (allFutureCheckbox && weekRangeRow) {
+        allFutureCheckbox.addEventListener("change", function () {
+            weekRangeRow.style.display = allFutureCheckbox.checked ? "none" : "";
+        });
+    }
+
+    const modelSelect = document.querySelector('select[name="model"]');
+    const plantSelect = document.querySelector('select[name="plant_source"]');
+    const infoBox      = document.getElementById("model-info");
+    const infoLoading   = document.getElementById("model-info-loading");
+    const infoTrained   = document.getElementById("model-info-trained");
+    const infoValidates = document.getElementById("model-info-validates");
+    const infoPredicts  = document.getElementById("model-info-predicts");
+
+    function refreshModelInfo() {
+        if (!modelSelect || !modelSelect.value) {
+            infoBox.style.display = "none";
+            return;
+        }
+        infoBox.style.display = "none";
+        infoLoading.style.display = "";
+
+        const plant = plantSelect ? plantSelect.value : "";
+        const url = `/models/${encodeURIComponent(modelSelect.value)}/info?plant=${encodeURIComponent(plant)}`;
+
+        fetch(url)
+            .then(resp => resp.json())
+            .then(data => {
+                infoLoading.style.display = "none";
+                if (data.error) {
+                    infoBox.style.display = "none";
+                    return;
+                }
+
+                infoTrained.textContent = (data.train_start && data.train_end)
+                    ? `${data.train_start} – ${data.train_end}`
+                    : "Unknown";
+
+                if (data.has_holdout && data.validation_start && data.validation_end) {
+                    infoValidates.textContent =
+                        `${data.validation_start} – ${data.validation_end} `
+                        + `(held-out consumption data not used in training)`;
+                } else {
+                    infoValidates.textContent = "No holdout weeks — this model wasn't validated against known data.";
+                }
+
+                if (data.predict_start && data.predict_end && data.predict_start !== data.predict_end) {
+                    infoPredicts.textContent =
+                        `${data.predict_start} – ${data.predict_end} `
+                        + `(waterfall data without consumption yet)`;
+                } else if (data.predict_start) {
+                    infoPredicts.textContent =
+                        `${data.predict_start} onward (waterfall data without consumption yet)`;
+                } else {
+                    infoPredicts.textContent = "Unknown";
+                }
+
+                infoBox.style.display = "";
+            })
+            .catch(() => {
+                infoLoading.style.display = "none";
+                infoBox.style.display = "none";
+            });
+    }
+
+    if (modelSelect) {
+        modelSelect.addEventListener("change", refreshModelInfo);
+    }
+    if (plantSelect) {
+        plantSelect.addEventListener("change", refreshModelInfo);
+    }
+    refreshModelInfo();
+
+    /* ── stage pipeline ──────────────────────────────────────── */
+    const STAGES = [
+        { key: 'loading',    label: 'Load' },
+        { key: 'predicting', label: 'Predict' },
+        { key: 'formatting', label: 'Format' },
+        { key: 'saving',     label: 'Save' },
+        { key: 'done',       label: 'Done' },
+    ];
+    const STAGE_KEYS = STAGES.map(s => s.key);
+
+    function buildPipeline() {
+        const row = document.getElementById('stage-row');
+        row.innerHTML = '';
+        STAGES.forEach((s, i) => {
+            const pip = document.createElement('div');
+            pip.className = 'stage-pip';
+            pip.id = 'pip-' + s.key;
+            pip.innerHTML = `<div class="pip-circle"></div>
+                             <div class="pip-label">${s.label}</div>`;
+            row.appendChild(pip);
+            if (i < STAGES.length - 1) {
+                const conn = document.createElement('div');
+                conn.className = 'stage-connector';
+                conn.id = 'conn-' + s.key;
+                row.appendChild(conn);
+            }
+        });
+    }
+
+    function paintStages(currentKey, isError) {
+        const ci = STAGE_KEYS.indexOf(currentKey);
+        const allDone = currentKey === 'done';
+        STAGES.forEach((s, i) => {
+            const pip = document.getElementById('pip-' + s.key);
+            if (!pip) return;
+            pip.classList.remove('pip-done', 'pip-active', 'pip-error');
+            const circle = pip.querySelector('.pip-circle');
+            circle.textContent = '';
+
+            if (isError && i === ci) {
+                pip.classList.add('pip-error');
+                circle.textContent = '✕';
+            } else if (allDone || i < ci) {
+                pip.classList.add('pip-done');
+                circle.textContent = '✓';
+            } else if (i === ci) {
+                pip.classList.add('pip-active');
+            }
+        });
+    }
+
+    function fmtTime(s) {
+        return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+    }
+
+    /* ── job polling ─────────────────────────────────────────── */
+    let pollTimer = null;
+
+    function startPolling(jobId) {
+        let lastStage = '';
+        pollTimer = setInterval(async () => {
+            let data;
+            try {
+                const resp = await fetch('/predict/status/' + jobId);
+                data = await resp.json();
+            } catch (_) { return; }   // network hiccup — keep polling
+
+            const bar = document.getElementById('bar-fill');
+            bar.style.width = Math.min(data.pct, 100) + '%';
+            bar.className = 'bar-fill' +
+                (data.stage === 'done' ? ' done' : data.stage === 'error' ? ' error' : '');
+
+            document.getElementById('status-msg').textContent   = data.message || '';
+            document.getElementById('status-timer').textContent = fmtTime(data.elapsed || 0);
+
+            if (data.stage !== lastStage) {
+                paintStages(data.stage, data.stage === 'error');
+                lastStage = data.stage;
+            }
+
+            if (data.done) {
+                clearInterval(pollTimer);
+                document.getElementById('predict-btn').disabled    = false;
+                document.getElementById('predict-btn').textContent = 'Make Predictions';
+
+                if (data.error && data.stage === 'error') {
+                    document.getElementById('predict-fail').textContent = '✖ ' + data.error;
+                    document.getElementById('predict-fail').style.display = 'block';
+                    return;
+                }
+
+                if (data.scores_html) {
+                    document.getElementById('scores-table').innerHTML = data.scores_html;
+                    document.getElementById('scores-card').style.display = '';
+                }
+
+                if (data.table_html) {
+                    const countLine = `Showing first 50 of <strong>${data.row_count}</strong> rows` +
+                        (data.result ? ` &nbsp;|&nbsp; XLSX saved to <code>${data.result}</code>` : '');
+                    document.getElementById('results-count').innerHTML = countLine;
+                    document.getElementById('results-table').innerHTML = data.table_html;
+                    document.getElementById('results-card').style.display = '';
+                }
+
+                document.getElementById('predict-success').textContent = '✔ ' + data.message;
+                document.getElementById('predict-success').style.display = 'block';
+            }
+        }, 1000);
+    }
+
+    /* ── form submit ─────────────────────────────────────────── */
+    document.getElementById('predict-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        document.getElementById('predict-fail').style.display    = 'none';
+        document.getElementById('predict-success').style.display = 'none';
+        document.getElementById('scores-card').style.display     = 'none';
+        document.getElementById('results-card').style.display    = 'none';
+        document.getElementById('predict-start-error').style.display = 'none';
+        document.getElementById('bar-fill').style.width   = '0%';
+        document.getElementById('bar-fill').className     = 'bar-fill';
+        document.getElementById('status-msg').textContent = 'Starting…';
+        document.getElementById('status-timer').textContent = '0s';
+
+        buildPipeline();
+        paintStages('loading', false);
+
+        document.getElementById('progress-panel').style.display = 'block';
+        document.getElementById('predict-btn').disabled    = true;
+        document.getElementById('predict-btn').textContent = 'Predicting…';
+
+        if (pollTimer) clearInterval(pollTimer);
+
+        try {
+            const fd   = new FormData(this);
+            const resp = await fetch('/predict/start', { method: 'POST', body: fd });
+            const data = await resp.json();
+
+            if (data.error) {
+                document.getElementById('predict-start-error').textContent  = data.error;
+                document.getElementById('predict-start-error').style.display = 'inline';
+                document.getElementById('predict-btn').disabled    = false;
+                document.getElementById('predict-btn').textContent = 'Make Predictions';
+                document.getElementById('progress-panel').style.display = 'none';
+                return;
+            }
+            startPolling(data.job_id);
+        } catch (err) {
+            document.getElementById('predict-start-error').textContent  = 'Could not start job: ' + err;
+            document.getElementById('predict-start-error').style.display = 'inline';
+            document.getElementById('predict-btn').disabled    = false;
+            document.getElementById('predict-btn').textContent = 'Make Predictions';
+            document.getElementById('progress-panel').style.display = 'none';
+        }
+    });
 });
 </script>
 
