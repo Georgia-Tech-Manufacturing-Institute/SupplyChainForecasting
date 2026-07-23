@@ -8,6 +8,8 @@
 v0.6 | 2026-07-23 | Home landing page & changelog
 - Improved prediction interface
 - Dropdown sidebar
+- Loading window for predictions
+- added model refresh option to retrain models quickly git 
 
 v0.5 | 2026-07-8 | Home landing page & changelog
 - Added this home page with section descriptions and changelog.
