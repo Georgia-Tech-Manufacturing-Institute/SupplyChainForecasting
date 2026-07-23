@@ -284,6 +284,52 @@ def explore():
     return render_template("explore.html", active="explore", models=models)
 
 
+@app.route("/models/<name>/config")
+def model_retrain_config(name):
+    """Return the training parameters used for a saved model, for the
+    'Retrain' button on the Explore page to autopopulate the Train form."""
+    try:
+        bundle = load_model(os.path.basename(name))
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 404
+
+    cfg = bundle.get('config', {}) or {}
+    scale_cfg = bundle.get('scale_config') or {}
+    span = bundle.get('train_span')
+
+    def _iso_week(idx):
+        if idx is None:
+            return ''
+        try:
+            year, week = idx_to_week(int(idx))
+            return f"{year}-W{week:02d}"
+        except Exception:
+            return ''
+
+    min_oi = max_oi = None
+    if span is not None:
+        try:
+            min_oi = int(span[0]['orderidx'])
+            max_oi = int(span[1]['orderidx'])
+        except Exception:
+            pass
+
+    return jsonify({
+        'plant_source':        bundle.get('plant', ''),
+        'model_type':          str(cfg.get('model_type', 'hgb')).lower(),
+        'earliest_order_date': _iso_week(min_oi),
+        'latest_order_date':   _iso_week(max_oi),
+        'target_mode':         cfg.get('target_mode', 'qty'),
+        'objective':           cfg.get('obj', 'log'),
+        'loss':                cfg.get('loss', 'absolute_error'),
+        'l2':                  cfg.get('l2', 1.0),
+        'scale_features':      bool(bundle.get('scale_config')),
+        'qty_scale_col':       scale_cfg.get('qty_scale_col', 'predqty_max'),
+        'wk_divisor':          scale_cfg.get('wk_divisor', 52),
+        'other_scale':         scale_cfg.get('other_scale') or '',
+    })
+
+
 # ── DATA / Reports ────────────────────────────────────────────────────────────
 @app.route("/reports", methods=["GET", "POST"])
 def reports():

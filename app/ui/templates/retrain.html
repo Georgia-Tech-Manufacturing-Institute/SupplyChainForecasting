@@ -361,6 +361,52 @@
     syncCmp();
   })();
 
+  /* ── autopopulate from a "Retrain model" link on the Explore page ── */
+  (function () {
+    const modelName = new URLSearchParams(window.location.search).get('populate');
+    if (!modelName) return;
+
+    const form = document.getElementById('retrain-form');
+    function setVal(name, value) {
+      const el = form.elements[name];
+      if (el && value !== undefined && value !== null && value !== '') el.value = value;
+    }
+
+    fetch('/models/' + encodeURIComponent(modelName) + '/config')
+      .then(resp => resp.json())
+      .then(cfg => {
+        if (cfg.error) {
+          document.getElementById('start-error').textContent = 'Could not load parameters from ' + modelName + ': ' + cfg.error;
+          document.getElementById('start-error').style.display = 'inline';
+          return;
+        }
+
+        setVal('plant_source', cfg.plant_source);
+        setVal('model_type', cfg.model_type);
+        setVal('earliest_order_date', cfg.earliest_order_date);
+        setVal('latest_order_date', cfg.latest_order_date);
+        setVal('target_mode', cfg.target_mode);
+        setVal('objective', cfg.objective);
+        setVal('loss', cfg.loss);
+        setVal('l2', cfg.l2);
+        setVal('qty_scale_col', cfg.qty_scale_col);
+        setVal('wk_divisor', cfg.wk_divisor);
+        setVal('other_scale', cfg.other_scale);
+        document.getElementById('scale_toggle').checked = !!cfg.scale_features;
+
+        userEdited = true;
+        nicknameEl.value = modelName.replace(/\.pkl$/, '') + '_retrain';
+
+        // re-run visibility toggles / highlighting for the fields we just set
+        document.getElementById('model_type').dispatchEvent(new Event('change'));
+        document.getElementById('scale_toggle').dispatchEvent(new Event('change'));
+      })
+      .catch(err => {
+        document.getElementById('start-error').textContent = 'Could not load parameters from ' + modelName + ': ' + err;
+        document.getElementById('start-error').style.display = 'inline';
+      });
+  })();
+
   /* ── stage pipeline ──────────────────────────────────────── */
   const STAGES = [
     { key: 'loading',  label: 'Load' },

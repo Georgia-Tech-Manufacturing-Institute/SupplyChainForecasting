@@ -52,6 +52,19 @@
   .err-row td   { color: #b00; font-style: italic; }
   .model-name   { font-family: monospace; font-size: 12px; word-break: break-all; }
   .section-note { font-size: 12px; color: var(--text-muted, #888); margin-bottom: 1rem; }
+  .btn-retrain {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--surface-2, #f0f0f0);
+    color: var(--text, #333);
+    border: 1px solid var(--border, #ddd);
+    text-decoration: none;
+  }
+  .btn-retrain:hover { background: var(--surface-hover, #e6e6e6); }
 
   /* two sub-columns for model vs naive */
   .perf-group th { text-align: center; }
@@ -80,6 +93,7 @@
         <th rowspan="2" colspan="2" style="text-align:center;">Training Range</th>
         <th colspan="3" style="text-align:center; border-left:2px solid var(--border,#ddd);">Model</th>
         <th colspan="3" style="text-align:center; border-left:1px solid var(--border,#eee);">Waterfall</th>
+        <th rowspan="2"></th>
       </tr>
       <tr>
         <th class="sub-head" style="border-left:2px solid var(--border,#ddd);">R²</th>
@@ -95,7 +109,7 @@
         {% if m.get('error') %}
           <tr class="err-row">
             <td class="model-name">{{ m.name }}</td>
-            <td colspan="14">⚠ {{ m.error }}</td>
+            <td colspan="15">⚠ {{ m.error }}</td>
           </tr>
         {% else %}
           <tr>
@@ -154,6 +168,10 @@
                 No holdout — train with Holdout Weeks &gt; 0
               </td>
             {% endif %}
+
+            <td>
+              <a class="btn-retrain" href="{{ url_for('retrain', populate=m.name) }}">Retrain model</a>
+            </td>
           </tr>
         {% endif %}
       {% endfor %}
