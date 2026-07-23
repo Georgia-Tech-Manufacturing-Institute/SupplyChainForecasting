@@ -282,7 +282,7 @@ label.check-label {
 }
 
 .report-description {
-    flex: 0 0 240px;
+    flex: 0 0 50px;
     height: fit-content;
     background: var(--sidebar-bg);
     border: 1px solid var(--border);
@@ -299,6 +299,35 @@ label.check-label {
     color: var(--navy);
     margin-bottom: 0.5rem;
     font-size: 0.9rem;
+}
+
+.desc-title.collapsible {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+}
+
+.desc-title.collapsible::after {
+    content: "▾";
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: 0.5rem;
+    transition: transform 0.15s ease;
+}
+
+.desc-title.collapsible.collapsed::after {
+    transform: rotate(-90deg);
+}
+
+.report-description.box-collapsed,
+.helper-description.box-collapsed {
+    padding-bottom: 0;
+}
+
+.box-collapsed .desc-title.collapsible {
+    margin-bottom: 0;
 }
 
 /* -- SIDEBAR  --*/
