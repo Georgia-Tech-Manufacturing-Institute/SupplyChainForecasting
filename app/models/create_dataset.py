@@ -30,9 +30,9 @@ def build_training_dataset(conn, min_orderidx: int = None,
     remove_nans  : drop rows where orderqty is NaN (True); otherwise fill 0
     """
     wf   = filter_SQL(conn, table='waterfall_agg')
-
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
+
     waterfall   = waterfall_features(wf, progress_cb=progress_cb)
     consumption = consumption_features(cf)
 
@@ -80,38 +80,45 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     since these are future orders.
     """
     wf   = filter_SQL(conn, table='waterfall_agg')
+    if predidxs is None:
+        current_predidx = wf[pi].max()
+        current_predictions = wf[wf[pi]==current_predidx]
+    elif not isinstance(predidxs, (int, list)):
+        raise ValueError("predidxs must be an int or list of ints")
+    elif isinstance(predidxs, list):
+        current_predictions = wf[wf[pi].isin(predidxs)]
+    elif isinstance(predidxs, int):
+        current_predictions = wf[wf[pi] == predidxs]
+    else: 
+        raise ValueError("Something happened")
+    
+    if len(wf) == 0:
+        raise ValueError("No valid predictions for the range of weeks given")
+
     cf   = filter_SQL(conn, table='consumption')
     cost = filter_SQL(conn, table='cost')
+    
+    augmented = [wf]
+    
+    for i in range(aug_lookahead):
+        ahead = current_predictions.copy()
+        ahead = ahead.sort_values(['part', oi, pi])
+        latest_predictions = ahead.groupby(['part']).last().reset_index()
+        latest_predictions[oi] += 1
+        augmented.append(latest_predictions)
+    wf = pd.concat(augmented, axis=0)
 
     waterfall   = waterfall_features(wf)
     consumption = consumption_features(cf)
 
-    # For future orders, use the last known consumption stats per part
-    # (there is no actual orderqty for orders not yet filled)
-    consumption_no_qty = consumption.drop(columns=[oq], errors='ignore')
-    last_consump = (
-        consumption_no_qty
-        .sort_values(oi)
-        .groupby('part', as_index=False)
-        .last()
-        .drop(columns=[oi], errors='ignore')
+    merged = (
+        waterfall
+        .merge(consumption, on=['part', oi], how='left')
+        .sort_values([pi, 'part', oi])
     )
-
-    if predidxs is None:
-        current_predidx = waterfall[pi].max()
-    elif not isinstance(predidxs, (int, list)):
-        raise ValueError("predidxs must be an int or list of ints")
-
-    # Run acc_features over the full waterfall (needs history), then filter
-    waterfall_with_consump = waterfall.merge(last_consump, on='part', how='left')
-    waterfall_with_consump = acc_features(waterfall_with_consump)
-
-    if predidxs is None:
-        latest_wf = waterfall_with_consump[waterfall_with_consump[pi] == current_predidx].copy()
-    elif isinstance(predidxs, int):
-        latest_wf = waterfall_with_consump[waterfall_with_consump[pi] == predidxs].copy()
-    else:
-        latest_wf = waterfall_with_consump[waterfall_with_consump[pi].isin(predidxs)].copy()
+    merged = acc_features(merged)
+    merged = pd.concat([merged,
+                        id_features(merged['part'], 8)], axis=1)
 
     if len(latest_wf) == 0:
         raise ValueError("Date range returns no predictions")
