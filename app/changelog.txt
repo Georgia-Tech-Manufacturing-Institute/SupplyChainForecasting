@@ -5,7 +5,11 @@
 #   - <bullet point>
 # Entries should be listed newest-first. Date may be YYYY-MM-DD or YYYY-MM.
 
-v0.5 | 2026-06-25 | Home landing page & changelog
+v0.6 | 2026-07-23 | Home landing page & changelog
+- Improved prediction interface
+- Dropdown sidebar
+
+v0.5 | 2026-07-8 | Home landing page & changelog
 - Added this home page with section descriptions and changelog.
 
 v0.4 | 2026-06 | Prediction QOL & formatting improvements
