@@ -293,11 +293,18 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     """
     Apply a saved model bundle to a feature-ready dataframe.
 
-    df must have the same feature columns the bundle was trained on,
-    except it does NOT need oq (orderqty).  Returns df with new columns:
-        adj_volume  — predicted volume adjustment
+    df must have the same feature columns the bundle was trained on.
+    oq (orderqty) is optional: rows may span everything since the model was
+    trained, so some may already have known consumption. Returns df with new
+    columns:
+        adj_volume   — predicted volume adjustment
         est_orderqty — estimated order quantity (rounded)
 
+    Every row gets est_orderqty regardless of whether oq is known. Rows where
+    oq is known additionally get performance stats attached at
+    result.attrs['scores'] (a DataFrame from score_block, Combined A+B vs.
+    Naive baseline) so callers can report accuracy instead of treating those
+    rows as blind guesses.
     """
     mA   = bundle['mA']
     mB   = bundle['mB']
@@ -309,6 +316,7 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     scale_config = bundle.get('scale_config')
 
     df = df.copy()
+    known_mask = df[oq].notna() if oq in df.columns else pd.Series(False, index=df.index)
 
     drop = [c for c in [oq, 'part'] if c in df.columns]
     X = df.drop(columns=drop)
@@ -342,8 +350,16 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
 
     part_max_oq = bundle.get('part_max_oq')
     if part_max_oq is not None and 'part' in df.columns:
-        cap = df['part'].map(part_max_oq) 
+        cap = df['part'].map(part_max_oq)
         df['est_orderqty'] = df['est_orderqty'].clip(upper=cap, lower=0)
+
+    if known_mask.any():
+        records = []
+        score_block(df.loc[known_mask, oq], df.loc[known_mask, 'est_orderqty'],
+                    "Combined A+B", None, records)
+        score_block(df.loc[known_mask, oq], df.loc[known_mask, pq],
+                    "Naive baseline", None, records)
+        df.attrs['scores'] = pd.DataFrame(records)
 
     return df
 
