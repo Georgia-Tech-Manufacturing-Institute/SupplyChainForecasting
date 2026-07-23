@@ -91,78 +91,28 @@
   </div>
 
   <div class="changelog">
-
+    {% for entry in changelog %}
     <div class="cl-entry">
       <div class="cl-meta">
-        <span class="cl-version">v0.5</span>
-        <span class="cl-date">2026-06-25</span>
+        <span class="cl-version">{{ entry.version }}</span>
+        <span class="cl-date">{{ entry.date }}</span>
       </div>
       <div class="cl-body">
-        <div class="cl-summary">Home landing page &amp; changelog</div>
+        <div class="cl-summary">{{ entry.summary }}</div>
         <ul>
-          <li>Added this home page with section descriptions and changelog.</li>
+          {% for item in entry.bullets %}
+          <li>{{ item }}</li>
+          {% endfor %}
         </ul>
       </div>
     </div>
-
+    {% else %}
     <div class="cl-entry">
-      <div class="cl-meta">
-        <span class="cl-version">v0.4</span>
-        <span class="cl-date">2026-06</span>
-      </div>
       <div class="cl-body">
-        <div class="cl-summary">Prediction QOL &amp; formatting improvements</div>
-        <ul>
-          <li>Prediction output now renders as a pivot table (part × week).</li>
-          <li>Added augmented-lookahead control on the Predict page.</li>
-          <li>General UI formatting polish across all pages.</li>
-        </ul>
+        <div class="cl-summary">No changelog entries yet.</div>
       </div>
     </div>
-
-    <div class="cl-entry">
-      <div class="cl-meta">
-        <span class="cl-version">v0.3</span>
-        <span class="cl-date">2026-05</span>
-      </div>
-      <div class="cl-body">
-        <div class="cl-summary">Random Forest &amp; Neural Net model types</div>
-        <ul>
-          <li>Model trainer now supports <code>hgb</code>, <code>rf</code>, and <code>nn</code> backends.</li>
-          <li>Model type visible in the Models explorer table.</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="cl-entry">
-      <div class="cl-meta">
-        <span class="cl-version">v0.2</span>
-        <span class="cl-date">2026-04</span>
-      </div>
-      <div class="cl-body">
-        <div class="cl-summary">Async training &amp; progress bar</div>
-        <ul>
-          <li>Training runs in a background thread; page polls for live progress.</li>
-          <li>Stage-by-stage percentage bar with elapsed time display.</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="cl-entry">
-      <div class="cl-meta">
-        <span class="cl-version">v0.1</span>
-        <span class="cl-date">2026-03</span>
-      </div>
-      <div class="cl-body">
-        <div class="cl-summary">Initial release</div>
-        <ul>
-          <li>Load, Reports, Train, Models, Predict, and Evaluate pages.</li>
-          <li>HGB dual-model (A: predqty &gt; 1, B: predqty ≤ 1) architecture.</li>
-          <li>Data coverage heatmap and order-accuracy error report.</li>
-        </ul>
-      </div>
-    </div>
-
+    {% endfor %}
   </div>
 </div>
 {% endblock %}

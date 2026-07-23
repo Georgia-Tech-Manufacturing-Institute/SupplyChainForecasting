@@ -1,0 +1,27 @@
+# Changelog
+# Format: one entry per block, separated by a blank line.
+#   <version> | <date> | <summary>
+#   - <bullet point>
+#   - <bullet point>
+# Entries should be listed newest-first. Date may be YYYY-MM-DD or YYYY-MM.
+
+v0.5 | 2026-06-25 | Home landing page & changelog
+- Added this home page with section descriptions and changelog.
+
+v0.4 | 2026-06 | Prediction QOL & formatting improvements
+- Prediction output now renders as a pivot table (part x week).
+- Added augmented-lookahead control on the Predict page.
+- General UI formatting polish across all pages.
+
+v0.3 | 2026-05 | Random Forest & Neural Net model types
+- Model trainer now supports hgb, rf, and nn backends.
+- Model type visible in the Models explorer table.
+
+v0.2 | 2026-04 | Async training & progress bar
+- Training runs in a background thread; page polls for live progress.
+- Stage-by-stage percentage bar with elapsed time display.
+
+v0.1 | 2026-03 | Initial release
+- Load, Reports, Train, Models, Predict, and Evaluate pages.
+- HGB dual-model (A: predqty > 1, B: predqty <= 1) architecture.
+- Data coverage heatmap and order-accuracy error report.

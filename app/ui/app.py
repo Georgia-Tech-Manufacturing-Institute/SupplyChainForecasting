@@ -146,13 +146,51 @@ def parse_week_to_idx(week):
 
 
 # ── index / home ──────────────────────────────────────────────────────────────
+CHANGELOG_PATH = os.path.join(os.path.dirname(__file__), '..', 'changelog.txt')
+
+def parse_changelog(path=CHANGELOG_PATH):
+    """Parse changelog.txt into a list of entries (newest first).
+
+    Format, one block per entry separated by a blank line:
+        <version> | <date> | <summary>
+        - <bullet point>
+        - <bullet point>
+    Lines starting with '#' are comments and ignored.
+    """
+    if not os.path.exists(path):
+        return []
+
+    with open(path, encoding="utf-8") as f:
+        raw = f.read()
+
+    entries = []
+    for block in raw.split("\n\n"):
+        lines = [ln.rstrip() for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+        if not lines:
+            continue
+
+        header, *bullets = lines
+        parts = [p.strip() for p in header.split("|")]
+        if len(parts) != 3:
+            continue
+
+        version, date, summary = parts
+        entries.append({
+            "version": version,
+            "date": date,
+            "summary": summary,
+            "bullets": [b.lstrip("-").strip() for b in bullets if b.strip().startswith("-")],
+        })
+
+    return entries
+
 @app.route("/")
 def index():
     return redirect(url_for("home"))
 
 @app.route("/home")
 def home():
-    return render_template("home.html", active="home")
+    return render_template("home.html", active="home", changelog=parse_changelog())
 
 
 # ── DATA / Load ───────────────────────────────────────────────────────────────
@@ -284,6 +322,77 @@ def explore():
     return render_template("explore.html", active="explore", models=models)
 
 
+def _iso_week_label(idx):
+    """Convert an orderidx integer to an ISO-ish 'YYYY-Wnn' string (matches
+    the format expected by the Prediction Week(s) input)."""
+    if idx is None:
+        return None
+    try:
+        year, week = idx_to_week(int(idx))
+        return f"{year}-W{week:02d}"
+    except Exception:
+        return None
+
+
+@app.route("/models/<name>/info")
+def model_info(name):
+    """Summarise a saved model's trained/validation/prediction week ranges,
+    for the Predict page sidebar. Trained weeks come from the bundle;
+    the prediction horizon (if a plant is given) comes from that plant's
+    current waterfall snapshot."""
+    plant = request.args.get('plant', '').strip().lower()
+    try:
+        bundle = load_model(os.path.basename(name))
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 404
+
+    span = bundle.get('train_span')
+    train_start_idx = train_end_idx = None
+    if span is not None:
+        try:
+            train_start_idx = int(span[0]['orderidx'])
+            train_end_idx   = int(span[1]['orderidx'])
+        except Exception:
+            pass
+
+    holdout_df = bundle.get('holdout_df')
+    val_start_idx = val_end_idx = None
+    if holdout_df is not None and not holdout_df.empty:
+        val_start_idx = int(holdout_df['orderidx'].min())
+        val_end_idx   = int(holdout_df['orderidx'].max())
+
+    if val_end_idx is not None:
+        predict_start_idx = val_end_idx + 1
+    elif train_end_idx is not None:
+        predict_start_idx = train_end_idx + 1
+    else:
+        predict_start_idx = None
+
+    predict_end_idx = None
+    if plant:
+        try:
+            conn = create_connection(plant=plant)
+            wf = filter_SQL(conn, table='waterfall_agg')
+            conn.close()
+            if not wf.empty:
+                latest_pi = wf['predidx'].max()
+                predict_end_idx = int(wf.loc[wf['predidx'] == latest_pi, 'orderidx'].max())
+                if predict_start_idx is not None and predict_end_idx < predict_start_idx:
+                    predict_end_idx = None
+        except Exception:
+            predict_end_idx = None
+
+    return jsonify({
+        'train_start':      _iso_week_label(train_start_idx),
+        'train_end':        _iso_week_label(train_end_idx),
+        'has_holdout':       val_start_idx is not None,
+        'validation_start': _iso_week_label(val_start_idx),
+        'validation_end':   _iso_week_label(val_end_idx),
+        'predict_start':    _iso_week_label(predict_start_idx),
+        'predict_end':      _iso_week_label(predict_end_idx),
+    })
+
+
 @app.route("/models/<name>/config")
 def model_retrain_config(name):
     """Return the training parameters used for a saved model, for the
@@ -378,6 +487,7 @@ def predict():
     error         = None
     table_html    = None
     row_count     = None
+    scores_html   = None
     models        = _list_models()
     current_week  = datetime.now().strftime("%G-W%V")
 
@@ -407,6 +517,12 @@ def predict():
                 import pandas as pd
                 preds = predict_from_bundle(bundle, df)
                 row_count = len(preds)
+
+                scores = preds.attrs.get('scores')
+                if scores is not None and not scores.empty:
+                    scores_html = scores.to_html(
+                        index=False, classes='pred-table', border=0
+                    )
 
                 # Build pivot: naive (predqty) vs model (est_qty)
                 out = preds.sort_values('predidx').copy()
@@ -456,6 +572,7 @@ def predict():
         error=error,
         table_html=table_html,
         row_count=row_count,
+        scores_html=scores_html,
         current_week=current_week,
     )
 
