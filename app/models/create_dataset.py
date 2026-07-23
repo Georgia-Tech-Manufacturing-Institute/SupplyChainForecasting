@@ -64,9 +64,9 @@ def build_training_dataset(conn, min_orderidx: int = None,
      
     # After creating features, we don't need to keep columns with no data
     # assumes that if we have consumption info in a week, we have
-    week_counts = real_data.groupby(oi)[oq].count() 
-    real_data = real_data[real_data[oi].isin(week_counts[week_counts>0].index) 
-                          & real_data[oq].isna()]
+    week_counts = real_data.groupby(oi)[oq].count()
+    real_data = real_data[real_data[oi].isin(week_counts[week_counts>0].index)
+                          & ~real_data[oq].isna()]
 
     return real_data.reset_index(drop=True)
 
