@@ -19,7 +19,7 @@ from app.models.train import model_train, save_model, load_model, predict_from_b
 from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 import sqlite3
-from app.prefixe import dirs, raw_dir, PLANT_SOURCES
+from app.prefixe import dirs, raw_dir, PLANT_SOURCES, pre
 
 # !!!! Run from command line with "python app/ui/app.py" from project root
 
@@ -279,6 +279,11 @@ def _load_model_metadata():
                 except Exception:
                     pass
 
+            test_weeks = None
+            holdout_df = bundle.get('holdout_df')
+            if holdout_df is not None and pre['oi'] in holdout_df.columns:
+                test_weeks = int(holdout_df[pre['oi']].nunique())
+
             scores_model = scores_naive = None
             if 'scores' in bundle:
                 sc = bundle['scores']
@@ -307,6 +312,7 @@ def _load_model_metadata():
                 'train_start':  _week_label(min_oi) if min_oi is not None else '—',
                 'train_end':    _week_label(max_oi) if max_oi is not None else '—',
                 'trained_at':   trained_at.strftime('%Y-%m-%d %H:%M'),
+                'test_weeks':   test_weeks,
                 'n_features':   len(bundle.get('feature_cols', [])),
                 'has_holdout':  'scores' in bundle,
                 'scores_model': scores_model,
@@ -732,13 +738,13 @@ def evaluate():
 # ── util ──────────────────────────────────────────────────────────────────────
 # once we have existing models, this function could populate selection dropdowns
 def _list_models():
-    """Return available model names from the saved_models/ directory."""
+    """Return available model names from the saved_models/ directory, most recently trained first."""
     model_dir = dirs['saved_models']
     if not model_dir.is_dir():
         return ["Full Dataset (2026wk01)"]   # fallback placeholder
-    return sorted(
-        f for f in os.listdir(model_dir) if f.endswith(".pkl")
-    ) or ["Full Dataset (2026wk01)"]
+    names = [f for f in os.listdir(model_dir) if f.endswith(".pkl")]
+    names.sort(key=lambda f: (model_dir / f).stat().st_mtime, reverse=True)
+    return names or ["Full Dataset (2026wk01)"]
 
 
 if __name__ == "__main__":

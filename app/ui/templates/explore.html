@@ -7,13 +7,15 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    table-layout: fixed;
   }
   .model-table th {
-    text-align: left;
+    text-align: center;
     padding: 8px 12px;
     background: var(--surface-2, #f4f4f4);
     border-bottom: 2px solid var(--border, #ddd);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
     font-weight: 600;
     color: var(--text-muted, #555);
     font-size: 11px;
@@ -21,9 +23,10 @@
     letter-spacing: .04em;
   }
   .model-table td {
-    padding: 9px 12px;
+    padding: 9px 9px;
     border-bottom: 1px solid var(--border, #eee);
     vertical-align: middle;
+    overflow-wrap: break-word;
   }
   .model-table tbody tr:hover td {
     background: var(--surface-hover, #fafafa);
@@ -48,7 +51,7 @@
   .score-better { color: #1a6b1a; font-weight: 600; }
   .score-worse  { color: #b00; }
   .score-na     { color: #aaa; font-style: italic; }
-  .date-range   { white-space: nowrap; font-family: monospace; font-size: 12px; }
+  .date-range   { font-family: monospace; font-size: 12px; }
   .err-row td   { color: #b00; font-style: italic; }
   .model-name   { font-family: monospace; font-size: 12px; word-break: break-all; }
   .section-note { font-size: 12px; color: var(--text-muted, #888); margin-bottom: 1rem; }
@@ -88,8 +91,8 @@
   <div id="desc-body" style="font-size:13px; line-height:1.7;">
     <p>The performance columns below compare each model's accuracy on its holdout set against a naive baseline:</p>
     <ul style="margin:6px 0 0 16px; padding:0;">
-      <li><b>R² (R-squared)</b> — share of variance in actual values explained by the forecast. Ranges roughly 0–1, with 1 being a perfect fit; higher is better. Can be negative if the forecast performs worse than simply predicting the average.</li>
-      <li><b>MAE (Mean Absolute Error)</b> — average absolute error between the model prediction and consumed quantity. Lower is better. </li>
+      <li><b>R² (R-squared)</b> — Measure of model "fit", with 1 being a perfect fit; A good model has an R2 greater than the waterfall R2 but less than 1.</li>
+      <li><b>MAE (Mean Absolute Error)</b> — average absolute error between the model prediction and consumed quantity. Lower is better.</li>
       <li><b>MSE (Mean Squared Error)</b> — average squared error between the model prediction and consumed quantity; penalizes large misses more heavily than MAE. Lower is better.</li>
     </ul>
     <p style="margin-top:8px;">
@@ -104,6 +107,26 @@
 {% if models %}
 <div class="card" style="overflow-x:auto; padding: 0;">
   <table class="model-table">
+    <colgroup>
+      <col style="width: 170px;">  <!-- Model File -->
+      <col style="width: 90px;">   <!-- Plant -->
+      <col style="width: 110px;">   <!-- Train Start -->
+      <col style="width: 95px;">   <!-- Train End -->
+      <col style="width: 95px;">  <!-- Trained -->
+      <col style="width: 75px;">   <!-- Test Weeks -->
+      <col style="width: 60px;">   <!-- Model R² -->
+      <col style="width: 65px;">   <!-- Model MAE -->
+      <col style="width: 80px;">   <!-- Model MSE -->
+      <col style="width: 60px;">   <!-- Waterfall R² -->
+      <col style="width: 65px;">   <!-- Waterfall MAE -->
+      <col style="width: 80px;">   <!-- Waterfall MSE -->
+      <col style="width: 85px;">   <!-- Type -->
+      <col style="width: 85px;">   <!-- Target -->
+      <col style="width: 85px;">   <!-- Objective -->
+      <col style="width: 85px;">   <!-- Scaled -->
+      <col style="width: 95px;">   <!-- Features -->
+      <col style="width: 110px;">  <!-- Actions -->
+    </colgroup>
     <thead>
       <tr>
         <th rowspan="2" class="sortable" data-col="0">Model File <span class="sort-arrow">↕</span></th>
@@ -111,22 +134,23 @@
         <th rowspan="2" class="sortable" data-col="2">Train Start <span class="sort-arrow">↕</span></th>
         <th rowspan="2" class="sortable" data-col="3">Train End <span class="sort-arrow">↕</span></th>
         <th rowspan="2" class="sortable" data-col="4">Trained <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="5">Test Weeks <span class="sort-arrow">↕</span></th>
         <th colspan="3" style="text-align:center; border-left:2px solid var(--border,#ddd);">Model</th>
         <th colspan="3" style="text-align:center; border-left:1px solid var(--border,#eee); border-right:2px solid var(--border,#ddd);">Waterfall</th>
-        <th rowspan="2" class="sortable" data-col="11">Type <span class="sort-arrow">↕</span></th>
-        <th rowspan="2" class="sortable" data-col="12">Target <span class="sort-arrow">↕</span></th>
-        <th rowspan="2" class="sortable" data-col="13">Objective <span class="sort-arrow">↕</span></th>
-        <th rowspan="2" class="sortable" data-col="14">Scaled <span class="sort-arrow">↕</span></th>
-        <th rowspan="2" class="sortable" data-col="15">Features <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="12">Type <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="13">Target <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="14">Obj. <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="15">Scaled <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="16">Features <span class="sort-arrow">↕</span></th>
         <th rowspan="2"></th>
       </tr>
       <tr>
-        <th class="sub-head sortable" data-col="5" style="border-left:2px solid var(--border,#ddd);">R² <span class="sort-arrow">↕</span></th>
-        <th class="sub-head sortable" data-col="6">MAE <span class="sort-arrow">↕</span></th>
-        <th class="sub-head sortable" data-col="7">MSE <span class="sort-arrow">↕</span></th>
-        <th class="sub-head sortable" data-col="8" style="border-left:1px solid var(--border,#eee);">R² <span class="sort-arrow">↕</span></th>
-        <th class="sub-head sortable" data-col="9">MAE <span class="sort-arrow">↕</span></th>
-        <th class="sub-head sortable" data-col="10" style="border-right:2px solid var(--border,#ddd);">MSE <span class="sort-arrow">↕</span></th>
+        <th class="sub-head sortable" data-col="6" style="border-left:2px solid var(--border,#ddd);">R² <span class="sort-arrow">↕</span></th>
+        <th class="sub-head sortable" data-col="7">MAE <span class="sort-arrow">↕</span></th>
+        <th class="sub-head sortable" data-col="8">MSE <span class="sort-arrow">↕</span></th>
+        <th class="sub-head sortable" data-col="9" style="border-left:1px solid var(--border,#eee);">R² <span class="sort-arrow">↕</span></th>
+        <th class="sub-head sortable" data-col="10">MAE <span class="sort-arrow">↕</span></th>
+        <th class="sub-head sortable" data-col="11" style="border-right:2px solid var(--border,#ddd);">MSE <span class="sort-arrow">↕</span></th>
       </tr>
     </thead>
     <tbody>
@@ -134,7 +158,7 @@
         {% if m.get('error') %}
           <tr class="err-row" data-col0="{{ m.name }}">
             <td class="model-name">{{ m.name }}</td>
-            <td colspan="16">⚠ {{ m.error }}</td>
+            <td colspan="17">⚠ {{ m.error }}</td>
           </tr>
         {% else %}
           {% set sm = m.scores_model %}
@@ -145,23 +169,25 @@
             data-col2="{{ m.train_start }}"
             data-col3="{{ m.train_end }}"
             data-col4="{{ m.trained_at }}"
-            data-col5="{{ sm.r2 if sm else '' }}"
-            data-col6="{{ sm.mae if sm else '' }}"
-            data-col7="{{ sm.mse if sm else '' }}"
-            data-col8="{{ sn.r2 if sn else '' }}"
-            data-col9="{{ sn.mae if sn else '' }}"
-            data-col10="{{ sn.mse if sn else '' }}"
-            data-col11="{{ m.model_type }}"
-            data-col12="{{ m.target_mode }}"
-            data-col13="{{ m.objective }}"
-            data-col14="{{ 1 if m.scaled else 0 }}"
-            data-col15="{{ m.n_features }}"
+            data-col5="{{ m.test_weeks if m.test_weeks is not none else '' }}"
+            data-col6="{{ sm.r2 if sm else '' }}"
+            data-col7="{{ sm.mae if sm else '' }}"
+            data-col8="{{ sm.mse if sm else '' }}"
+            data-col9="{{ sn.r2 if sn else '' }}"
+            data-col10="{{ sn.mae if sn else '' }}"
+            data-col11="{{ sn.mse if sn else '' }}"
+            data-col12="{{ m.model_type }}"
+            data-col13="{{ m.target_mode }}"
+            data-col14="{{ m.objective }}"
+            data-col15="{{ 1 if m.scaled else 0 }}"
+            data-col16="{{ m.n_features }}"
           >
             <td class="model-name">{{ m.name }}</td>
             <td>{{ m.plant | title }}</td>
             <td class="date-range">{{ m.train_start }}</td>
-            <td class="date-range">→ {{ m.train_end }}</td>
+            <td class="date-range">{{ m.train_end }}</td>
             <td class="date-range">{{ m.trained_at }}</td>
+            <td style="text-align:center;">{{ m.test_weeks if m.test_weeks is not none else '—' }}</td>
 
             {# Model scores #}
             {% if sm %}
@@ -231,7 +257,7 @@
   var table = document.querySelector('.model-table');
   if (!table) return;
   var tbody = table.querySelector('tbody');
-  var numericCols = new Set([5, 6, 7, 8, 9, 10, 14, 15]);
+  var numericCols = new Set([5, 6, 7, 8, 9, 10, 11, 15, 16]);
   var state = { col: null, dir: 1 };
 
   function clearArrows() {
