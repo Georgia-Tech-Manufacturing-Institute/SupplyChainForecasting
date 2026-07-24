@@ -120,8 +120,6 @@ def _run_training_job(job_id: str, params: dict):
         })
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
-# use in other funcs, pass in all command line args for whatever function needs to be executed
 def run_script(script_args: list[str]) -> tuple[bool, str]:
     """Run a backend script and return (success, output_or_error)."""
     try:
@@ -271,6 +269,8 @@ def _load_model_metadata():
             cfg = bundle.get('config', {})
             span = bundle.get('train_span')  # tuple of (min_series, max_series)
 
+            trained_at = datetime.fromtimestamp((model_dir / fname).stat().st_mtime)
+
             min_oi = max_oi = None
             if span is not None:
                 try:
@@ -306,6 +306,7 @@ def _load_model_metadata():
                 'scaled':       bool(bundle.get('scale_config')),
                 'train_start':  _week_label(min_oi) if min_oi is not None else '—',
                 'train_end':    _week_label(max_oi) if max_oi is not None else '—',
+                'trained_at':   trained_at.strftime('%Y-%m-%d %H:%M'),
                 'n_features':   len(bundle.get('feature_cols', [])),
                 'has_holdout':  'scores' in bundle,
                 'scores_model': scores_model,
