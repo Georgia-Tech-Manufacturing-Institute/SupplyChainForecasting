@@ -717,11 +717,32 @@ def evaluate():
 
     if request.method == "POST":
         model_name = request.form.get("model", "")
+        test_mode  = request.form.get("test_mode", "holdout")
         try:
-            bundle     = load_model(model_name)
-            chart_html = holdout_report(bundle)
-            if not chart_html:
-                error = "This model was not trained with a holdout set — retrain with Holdout Weeks > 0 to generate a performance report."
+            bundle = load_model(model_name)
+            if test_mode == "recent":
+                plant     = request.form.get("plant_source", PLANT_SOURCES[0]).strip().lower()
+                test_week = request.form.get("test_week", "").strip()
+                if not test_week:
+                    raise ValueError("Choose a week to test on.")
+                predidx = parse_week_to_idx(test_week)
+
+                conn = create_connection(plant=plant)
+                df   = build_prediction_dataset(conn, predidxs=predidx)
+                conn.close()
+
+                preds = predict_from_bundle(bundle, df)
+                known = preds[preds['orderqty'].notna()].copy()
+                if known.empty:
+                    error = "No actual consumption is posted yet for that week — try an earlier one."
+                else:
+                    known['naive_orderqty'] = known['predqty']
+                    known['lookahead_wk']   = known['orderidx'] - known['predidx']
+                    chart_html = holdout_report(known, label='recent-week test')
+            else:
+                chart_html = holdout_report(bundle.get('holdout_df'))
+                if not chart_html:
+                    error = "This model was not trained with a holdout set — retrain with Holdout Weeks > 0 to generate a performance report."
         except Exception as e:
             error = str(e)
 
@@ -733,6 +754,54 @@ def evaluate():
         chart_html=chart_html,
         error=error,
     )
+
+
+@app.route("/models/<name>/test-range")
+def model_test_range(name):
+    """Range of order weeks a model hasn't seen but for which real consumption
+    is already posted — bounds the Evaluate page's 'Test On' week input."""
+    plant = request.args.get('plant', '').strip().lower()
+    try:
+        bundle = load_model(os.path.basename(name))
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 404
+
+    span = bundle.get('train_span')
+    train_end_idx = None
+    if span is not None:
+        try:
+            train_end_idx = int(span[1]['orderidx'])
+        except Exception:
+            pass
+
+    holdout_df = bundle.get('holdout_df')
+    val_end_idx = None
+    if holdout_df is not None and not holdout_df.empty:
+        val_end_idx = int(holdout_df['orderidx'].max())
+
+    if val_end_idx is not None:
+        low_idx = val_end_idx + 1
+    elif train_end_idx is not None:
+        low_idx = train_end_idx + 1
+    else:
+        low_idx = None
+
+    high_idx = None
+    if plant:
+        try:
+            _, cf = get_coverage_counts(plant)
+            if cf:
+                high_idx = max(r['idx'] for r in cf)
+        except Exception:
+            high_idx = None
+
+    available = low_idx is not None and high_idx is not None and low_idx <= high_idx
+
+    return jsonify({
+        'available': available,
+        'min_week': _iso_week_label(low_idx) if available else None,
+        'max_week': _iso_week_label(high_idx) if available else None,
+    })
 
 
 # ── util ──────────────────────────────────────────────────────────────────────

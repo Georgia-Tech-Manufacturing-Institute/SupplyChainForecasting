@@ -9,7 +9,7 @@
 <div style="display:flex; gap:1.5rem; align-items:flex-start;">
 
   <div class="card" style="min-width:280px;">
-    <form method="POST">
+    <form method="POST" id="evaluate-form">
       <table class="form-table">
         <thead>
           <tr>
@@ -20,7 +20,7 @@
           <tr>
             <th class="row-label">Model</th>
             <td>
-              <select name="model" style="max-width:260px;">
+              <select name="model" id="modelSelect" style="max-width:260px;">
                 {% for m in models %}
                   <option value="{{ m }}"
                     {% if request.form.get('model', models[0]) == m %}selected{% endif %}>
@@ -28,6 +28,44 @@
                   </option>
                 {% endfor %}
               </select>
+            </td>
+          </tr>
+          <tr>
+            <th class="row-label">Plant Source</th>
+            <td>
+              <select name="plant_source" id="plantSelect" class="form-select">
+                {% for p in plant_sources %}
+                  <option value="{{ p }}"
+                    {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                    {{ p }}
+                  </option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <th class="row-label">Test On</th>
+            <td>
+              <label style="display:block; margin-bottom:6px;">
+                <input type="radio" name="test_mode" value="holdout" id="mode-holdout"
+                       {% if request.form.get('test_mode', 'holdout') == 'holdout' %}checked{% endif %}>
+                Holdout set (weeks withheld during training)
+              </label>
+              <label id="recent-label" style="display:block;">
+                <input type="radio" name="test_mode" value="recent" id="mode-recent" disabled
+                       {% if request.form.get('test_mode') == 'recent' %}checked{% endif %}>
+                Recent week — data not used in training
+              </label>
+            </td>
+          </tr>
+          <tr id="test-week-row" style="display:none;">
+            <th class="row-label">Week
+              <div class="help-text">Order week to score against actual (posted) consumption.</div>
+            </th>
+            <td>
+              <input type="week" name="test_week" id="test_week"
+                     value="{{ request.form.get('test_week', '') }}">
+              <div id="test-week-hint" style="font-size:12px; margin-top:4px; color:var(--text-muted);"></div>
             </td>
           </tr>
         </tbody>
@@ -49,10 +87,66 @@
       <p><b>Scatter</b> — actual vs predicted order qty; naive baseline is raw <code>predqty</code>.</p>
       <p><b>Line</b> — MAE broken down by lookahead week; lower is better.</p>
       <p>Train a model with <em>Holdout Weeks &gt; 0</em> on the Train page to enable this report.</p>
+      <p>If real consumption is already posted for weeks after training, <b>Test On</b> lets you score the model against that recent, genuinely unseen data instead.</p>
     </div>
   </div>
 
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modelSelect  = document.getElementById("modelSelect");
+    const plantSelect  = document.getElementById("plantSelect");
+    const holdoutRadio = document.getElementById("mode-holdout");
+    const recentRadio  = document.getElementById("mode-recent");
+    const recentLabel  = document.getElementById("recent-label");
+    const weekRow      = document.getElementById("test-week-row");
+    const weekInput    = document.getElementById("test_week");
+    const weekHint     = document.getElementById("test-week-hint");
+
+    function toggleWeekRow() {
+        weekRow.style.display = recentRadio.checked ? "" : "none";
+    }
+
+    function refreshTestRange() {
+        if (!modelSelect || !modelSelect.value) return;
+        const plant = plantSelect ? plantSelect.value : "";
+        const url = `/models/${encodeURIComponent(modelSelect.value)}/test-range?plant=${encodeURIComponent(plant)}`;
+
+        fetch(url)
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.available) {
+                    recentRadio.disabled = false;
+                    recentLabel.style.color = "";
+                    weekInput.min = data.min_week;
+                    weekInput.max = data.max_week;
+                    weekHint.textContent = `Available: ${data.min_week} to ${data.max_week}`;
+                    if (!weekInput.value) weekInput.value = data.max_week;
+                } else {
+                    recentRadio.disabled = true;
+                    recentRadio.checked  = false;
+                    holdoutRadio.checked = true;
+                    recentLabel.style.color = "var(--text-muted)";
+                    weekHint.textContent = "No unseen weeks with known consumption yet for this plant.";
+                }
+                toggleWeekRow();
+            })
+            .catch(() => {
+                recentRadio.disabled = true;
+                recentLabel.style.color = "var(--text-muted)";
+            });
+    }
+
+    if (modelSelect) modelSelect.addEventListener("change", refreshTestRange);
+    if (plantSelect) plantSelect.addEventListener("change", refreshTestRange);
+    if (holdoutRadio) holdoutRadio.addEventListener("change", toggleWeekRow);
+    if (recentRadio)  recentRadio.addEventListener("change", toggleWeekRow);
+
+    refreshTestRange();
+    toggleWeekRow();
+});
+</script>
 
 {% if chart_html %}
 <div style="margin-top:1.5rem;">

@@ -5,15 +5,14 @@ import plotly.io as pio
 waterfall_color = "#b73333"
 model_color = '#4361ee'
 
-def holdout_report(bundle: dict) -> str:
+def holdout_report(df, label: str = 'holdout set') -> str:
     """
-    Generate a Plotly HTML report from a bundle that contains holdout_df.
-    Returns an HTML string (empty if no holdout data is available).
+    Generate a Plotly HTML report from a dataframe of scored predictions.
+    Returns an HTML string (empty if no data is available).
 
-    Columns expected in bundle['holdout_df']:
-        orderqty, est_orderqty, naive_orderqty, lookahead_wk
+    Columns expected in df:
+        orderqty, est_orderqty, naive_orderqty, lookahead_wk, part, orderidx
     """
-    df = bundle.get('holdout_df')
     if df is None or df.empty:
         return ''
 
@@ -87,7 +86,7 @@ def holdout_report(bundle: dict) -> str:
         hovertemplate=_hover,
     ))
     fig_scatter.update_layout(
-        title='Actual vs Predicted Order Qty — holdout set',
+        title=f'Actual vs Predicted Order Qty — {label}',
         xaxis_title='Actual order qty',
         yaxis_title='Predicted order qty',
         height=420,
