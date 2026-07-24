@@ -5,6 +5,9 @@
 #   - <bullet point>
 # Entries should be listed newest-first. Date may be YYYY-MM-DD or YYYY-MM.
 
+v0.7 | 2026-07-28 | Fixes and documentation
+- Added sorting + explanations on the Model Explore page
+
 v0.6 | 2026-07-23 | Home landing page & changelog
 - Improved prediction interface
 - Dropdown sidebar

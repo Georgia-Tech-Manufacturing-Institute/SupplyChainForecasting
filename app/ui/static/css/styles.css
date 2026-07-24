@@ -323,7 +323,7 @@ label.check-label {
 
 .report-description.box-collapsed,
 .helper-description.box-collapsed {
-    padding-bottom: 0;
+    padding-bottom: 20;
 }
 
 .box-collapsed .desc-title.collapsible {
