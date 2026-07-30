@@ -95,14 +95,17 @@
       <li><b>MAE (Mean Absolute Error)</b> — average absolute error between the model prediction and consumed quantity. Lower is better.</li>
       <li><b>MSE (Mean Squared Error)</b> — average squared error between the model prediction and consumed quantity; penalizes large misses more heavily than MAE. Lower is better.</li>
     </ul>
-    <p style="margin-top:8px;">
-      <b>Model</b> columns score the trained model's own predictions on the holdout weeks.
+    <p style="margin-top:8px;"> Model and Waterfall columns utilize the Validation weeks to provide model performance estimates. If no validation weeks were set at the time of training, these cells will be empty. 
+      <b>Model</b> columns give the fit quality of the ML model on the validation weeks 
       <b>Waterfall</b> columns score a naive baseline that simply carries forward the most recent known waterfall value.
       <span class="score-better" style="font-style:normal;">Green</span> means the model beat that baseline;
       <span class="score-worse" style="font-style:normal;">red</span> means it underperformed.
     </p>
   </div>
 </div>
+
+
+<br style="margin-top: 20px">
 
 {% if models %}
 <div class="card" style="overflow-x:auto; padding: 0;">
@@ -134,7 +137,7 @@
         <th rowspan="2" class="sortable" data-col="2">Train Start <span class="sort-arrow">↕</span></th>
         <th rowspan="2" class="sortable" data-col="3">Train End <span class="sort-arrow">↕</span></th>
         <th rowspan="2" class="sortable" data-col="4">Trained <span class="sort-arrow">↕</span></th>
-        <th rowspan="2" class="sortable" data-col="5">Test Weeks <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="5">Validation Weeks <span class="sort-arrow">↕</span></th>
         <th colspan="3" style="text-align:center; border-left:2px solid var(--border,#ddd);">Model</th>
         <th colspan="3" style="text-align:center; border-left:1px solid var(--border,#eee); border-right:2px solid var(--border,#ddd);">Waterfall</th>
         <th rowspan="2" class="sortable" data-col="12">Type <span class="sort-arrow">↕</span></th>

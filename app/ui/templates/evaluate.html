@@ -49,12 +49,12 @@
               <label style="display:block; margin-bottom:6px;">
                 <input type="radio" name="test_mode" value="holdout" id="mode-holdout"
                        {% if request.form.get('test_mode', 'holdout') == 'holdout' %}checked{% endif %}>
-                Holdout set (weeks withheld during training)
+                Validation set (weeks withheld during training)
               </label>
               <label id="recent-label" style="display:block;">
                 <input type="radio" name="test_mode" value="recent" id="mode-recent" disabled
                        {% if request.form.get('test_mode') == 'recent' %}checked{% endif %}>
-                Recent week — data not used in training
+                Test week (new data since training)
               </label>
             </td>
           </tr>
@@ -86,7 +86,7 @@
       <p>Shows performance on the holdout weeks set aside during training.</p>
       <p><b>Scatter</b> — actual vs predicted order qty; naive baseline is raw <code>predqty</code>.</p>
       <p><b>Line</b> — MAE broken down by lookahead week; lower is better.</p>
-      <p>Train a model with <em>Holdout Weeks &gt; 0</em> on the Train page to enable this report.</p>
+      <p>Train a model with <em>validation set &gt; 0</em> on the Train page to enable this report.</p>
       <p>If real consumption is already posted for weeks after training, <b>Test On</b> lets you score the model against that recent, genuinely unseen data instead.</p>
     </div>
   </div>

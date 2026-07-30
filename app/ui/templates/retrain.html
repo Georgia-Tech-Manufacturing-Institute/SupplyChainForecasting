@@ -9,7 +9,6 @@
 <div class="page-title">
   <span class="icon">🔧</span> Train
 </div>
-
 <div style="display:flex; gap:1.5rem; align-items:flex-start;">
 
   <!-- ── form ──────────────────────────────────────────────── -->
@@ -51,20 +50,20 @@
 
           <tr>
             <th class="row-break" colspan="2">
-              Order Date Range
+              Training Date Range
             </th>
           </tr>
           <tr>
-            <th class="row-label">Earliest Order Date</th>
+            <th class="row-label">Train Start</th>
             <td><input type="week" name="earliest_order_date" id="earliest_order_date" /></td>
           </tr>
           <tr>
-            <th class="row-label">Latest Order Date</th>
+            <th class="row-label">Train End</th>
             <td><input type="week" name="latest_order_date" id="latest_order_date" /></td>
           </tr>
 
           <tr>
-            <th class="row-label">Holdout Weeks
+            <th class="row-label">Validation Weeks
             <div class="help-text">Choose the number of weeks to omit from training to check performance </div>
             </th>
             <td>
@@ -127,35 +126,6 @@
                      style="max-width:80px;" />
             </td>
           </tr>
-  <!-- ──         <tr>
-            <th class="row-label">Augment Waterfall
-              <div class="help-text">Synthesise missing lookahead observations before training</div>
-            </th>
-            <td>
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="checkbox" id="augment_toggle" name="augment" value="1" checked
-                       style="width:15px; height:15px; cursor:pointer;" />
-                <span style="font-size:13px;">Augment during feature generation</span>
-              </label>
-            </td>
-          </tr>
-          <tr id="augment-params">
-            <th class="row-label" >Augment Parameters</th>
-            <td>
-              <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-                <label style="font-size:13px;">
-                  Min lookahead to pad
-                  <input type="number" name="min_part_lookahead_to_pad" value="4" min="1" max="52"
-                         style="width:60px; margin-left:6px;" />
-                </label>
-                <label style="font-size:13px;">
-                  Lookahead padding
-                  <input type="number" name="lookahead_padding" value="4" min="1" max="52"
-                         style="width:60px; margin-left:6px;" />
-                </label>
-              </div>
-            </td>
-          </tr> -->
           <tr>
             <th class="row-label">Scale Features
               <div class="help-text">Normalise <code>_qty</code> columns by a row-level denominator column and <code>_wk</code> columns by a fixed divisor</div>
@@ -232,17 +202,16 @@
 
   <!-- ── sidebar ───────────────────────────────────────────── -->
   <div class="helper-sidebar">
+
     <div class="report-description">
-      <div class="desc-title">How training works</div>
+      <div class="desc-title">Model parameters</div>
       <div id="desc-body" style="font-size:13px; line-height:1.7;">
-        <p>Training runs in the background so the page stays responsive. Four stages:</p>
-        <ol style="margin:6px 0 0 16px; padding:0;">
-          <li><b>Load</b> — read waterfall &amp; consumption from the database</li>
-          <li><b>Features</b> — walk-forward loop over all prediction weeks <em>(slowest step)</em></li>
-          <li><b>Train</b> — fit predictive models on the prepared data</li>
-          <li><b>Save</b> — write <code>.pkl</code> to <code>saved_models/</code></li>
-        </ol>
-        <p style="margin-top:8px; color:var(--text-muted);">Typical runtime: 2–5 min.</p>
+        <p>The model parameters are settings that can improve or worsen predictions. It's hard to know how parameters will directly impact predictions</p>
+          <ul style="margin:6px 0 0 16px; padding:0;">
+        <li><b>Model type</b> dictates how the ML model learns. An overview of model types is visible below: generally, HGB is a strong balance of complexity and accuracy.</li>
+        <li><b>Order Date Range</b> is the span over which the model "learns." Attempting to predict within this range will result in inflated performance. This should be set to have a large enough representative range.</li>
+        <li><b>Validation Weeks</b> Withhold a set number of weeks from , we can validate model performance. Ordering predictions and consumption is then saved with the  model so we have an immediate indication about how well the model works on never before seen data. </li>
+      </ol>
       </div>
     </div>
 
