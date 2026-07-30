@@ -25,25 +25,24 @@
   </div>
 
   <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
-    A machine learning model learns numerical patterns based on past data. 
+    A machine learning model learns numerical patterns based on past data, similar to an supply chain learning the trends of a customer. An expert might recall part numbers that behave consistently, or make assessments based on seasonality. A model develops a complex formula based on historical data that it is given; the formula changes if the input data changes - the input set is called the "training set." Once a model is trained, it doesn't change until you train it again.  
+  </p>
+
+<p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
+    Before using the model to predict future ordering, it's important to characterize it's ability to do so. Order data from the training set can't be used to evaluate the performance - it's akin to using a study guide question on the final exam. The model has an unfair advantage. 
   </p>
 
   <ul style="font-size:14px; line-height:1.75; padding-left:20px; margin-bottom:8px;">
     <li>
-      <b>Training data</b> - the historical order weeks the model studies to learn its patterns.
-      You choose this range on the <b>Train</b> page (Earliest/Latest Order Date). 
+      <b>Training data</b> - the historical order weeks the model studies to learn its patterns. You choose this range on the <b>Train</b> page.
     </li>
     <li>
       <b>Validation data</b> (also called a "holdout" set) - a handful of the most recent weeks
-      <em>inside</em> that same historical range, deliberately hidden from the model while it
-      learns. Right after training, you can check how well the model would have predicted those
-      hidden weeks - like a practice quiz using questions you already have the answer key for.
-      You choose how many weeks to hold back with <b>Validation Weeks</b> on the Train page, and
-      review the results on <b>Evaluate</b> ("Validation set").
+      <em>inside</em> that same historical range, deliberately hidden from the model while it learns. Right after training, you can check how well the model would have predicted those  hidden weeks - like a practice quiz using questions you already have the answer key for.
+      You choose how many weeks to hold back with  <b>Validation Weeks</b> on the Train page, and  review the results on <b>Evaluate</b> ("Validation set").
     </li>
     <li>
-      <b>Test data</b> - real order weeks the model has never seen, because they didn't exist yet
-      when you trained it. This might be the most recent data, or it might be data that wa
+      <b>Test data</b> - real order weeks the model has never seen, because they didn't exist yet when you trained it. This might be the most recent data, or it might be data that wa
     </li>
     <li>
       <b>Prediction data</b> - real order weeks the model has never seen, because they didn't exist yet
