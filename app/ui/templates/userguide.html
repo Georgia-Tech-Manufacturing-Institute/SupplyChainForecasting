@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}User Guide - Forecast Tool{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">📖</span> User Guide
+</div>
+
+<p style="color:var(--text-muted); font-size:14px; max-width:720px; margin-bottom:28px; line-height:1.6;">
+  A quick reference for what each page does, the terms you'll see on screen, and answers to
+  common questions. Start with the section below - it explains a distinction that shapes how
+  you should read every score this tool shows you.
+</p>
+
+<div class="guide-toc">
+  <a href="#time-and-data">Training vs. Validation vs. Test</a>
+  <a href="#terms">Key Terms</a>
+  <a href="#faq">FAQ</a>
+</div>
+
+<!-- ── Training / Validation / Test, with respect to time ─────────── -->
+<div class="guide-section" id="time-and-data">
+  <div class="guide-section-title">
+    Training, Validation &amp; Test Data 
+  </div>
+
+  <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
+    A machine learning model learns numerical patterns based on past data. 
+  </p>
+
+  <ul style="font-size:14px; line-height:1.75; padding-left:20px; margin-bottom:8px;">
+    <li>
+      <b>Training data</b> - the historical order weeks the model studies to learn its patterns.
+      You choose this range on the <b>Train</b> page (Earliest/Latest Order Date). 
+    </li>
+    <li>
+      <b>Validation data</b> (also called a "holdout" set) - a handful of the most recent weeks
+      <em>inside</em> that same historical range, deliberately hidden from the model while it
+      learns. Right after training, you can check how well the model would have predicted those
+      hidden weeks - like a practice quiz using questions you already have the answer key for.
+      You choose how many weeks to hold back with <b>Validation Weeks</b> on the Train page, and
+      review the results on <b>Evaluate</b> ("Validation set").
+    </li>
+    <li>
+      <b>Test data</b> - real order weeks the model has never seen, because they didn't exist yet
+      when you trained it. This might be the most recent data, or it might be data that wa
+    </li>
+    <li>
+      <b>Prediction data</b> - real order weeks the model has never seen, because they didn't exist yet
+      when you trained it. This is the closest thing to grading the actual forecast, but it can't
+      happen instantly: it takes time for those orders to be placed and for real consumption to
+      be posted for them.
+    </li>
+  </ul>
+
+  <div class="timeline-graphic">
+    <div class="timeline-caption">Where each set of weeks sits on the calendar</div>
+    <div class="timeline-wrap">
+      <div class="timeline-track">
+        <div class="timeline-seg seg-train" style="flex:58">
+          Training
+          <span class="sub">weeks the model studies</span>
+        </div>
+        <div class="timeline-seg seg-validation" style="flex:12">
+          Validation
+          <span class="sub">held out &amp; scored</span>
+        </div>
+        <div class="timeline-seg seg-test-posted" style="flex:14">
+          Test
+          <span class="sub">scored</span>
+        </div>
+        <div class="timeline-seg seg-test-future" style="flex:16">
+          Prediction
+          <span class="sub">forecast only</span>
+        </div>
+      </div>
+      <div class="timeline-marker" style="left:0%"></div>
+      <div class="timeline-marker-label edge-start" style="left:0%"><br>Train Start</div>
+      <div class="timeline-marker" style="left:70%"></div>
+      <div class="timeline-marker-label" style="left:70%"><br>Train End</div>
+      <div class="timeline-marker" style="left:84%"></div>
+      <div class="timeline-marker-label" style="left:84%">Today</div>
+      <div class="timeline-marker" style="left:100%"></div>
+      <div class="timeline-marker-label edge-end" style="left:100%">Future<br>weeks →</div>
+    </div>
+    <div class="timeline-legend">
+      <span><i class="swatch train"></i>Training - the model learns from these weeks</span>
+      <span><i class="swatch validation"></i>Validation - inside the training range, hidden &amp; scored right after training</span>
+      <span><i class="swatch test-posted"></i>Test, scored - real consumption has posted</span>
+      <span><i class="swatch test-future"></i>Prediction - when this information becomes the past, it can be used for testing</span>
+    </div>
+  </div>
+
+  <div class="time-compare">
+    <div class="time-card">
+      <div class="time-card-title">🗓️ The week you train a model</div>
+      <ul>
+        <li>Only training and validation data exist yet - nothing else has happened.</li>
+        <li>The validation score is your <em>only</em> signal of quality, and it's a bit
+          optimistic: those weeks sit right next to the training data and share its season and trends.</li>
+        <li>The <b>Predict</b> page will happily generate forecasts for future weeks, but there's
+          no way yet to know if those specific forecasts are correct.</li>
+        <li>Good for: sanity-checking a new model and comparing it to earlier ones before you rely on it.</li>
+      </ul>
+    </div>
+    <div class="time-card">
+      <div class="time-card-title">📅 Next week (or later)</div>
+      <ul>
+        <li>Real consumption has now posted for some of the weeks the model predicted "blind."</li>
+        <li>Go to <b>Evaluate → Test On → Recent week</b> to score the model against this
+          brand-new, genuinely unseen data - a real test, not a rehearsal.</li>
+        <li>If the recent-week score is close to the validation score, trust the model.</li>
+        <li>If it's noticeably worse, the validation score was too optimistic - likely time to load the new weeks' data and retrain.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ── Key terms ────────────────────────────────────────────────── -->
+<div class="guide-section" id="terms">
+  <div class="guide-section-title">
+    <span class="icon" style="width:28px;height:28px;font-size:14px;">🔤</span>
+    Key Terms
+  </div>
+
+  <div class="guide-table-wrap">
+    <table class="guide-table">
+      <tbody>
+        <tr>
+          <td class="gt-page">Naive baseline</td>
+          <td colspan="2">The "naive model" is assuming the waterfall prediction is correct; </td>
+        </tr>
+        <tr>
+          <td class="gt-page">Lookahead</td>
+          <td colspan="2">How many weeks in advance a prediction was made relative to the order
+            week it's about. Predictions made further ahead are naturally less certain, which is
+            why Reports and Evaluate can break accuracy down by lookahead.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">R² (R-squared)</td>
+          <td colspan="2">A "fit quality" score between roughly 0 and 1, where 1 is a perfect fit.
+            Higher than the naive baseline's R² is the bar to clear. Anything outside of the range of 0/1 points to an unstable model. A score of 0.1 is a bad model, 0.6 is ok, 0.9 is excellent, and 9.284 is very very bad.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">MAE (Mean Absolute Error)</td>
+          <td colspan="2">The average size of the model's miss, in the same units as the order
+            quantity. Easiest metric to read literally - lower is better.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">MSE (Mean Squared Error)</td>
+          <td colspan="2">Like MAE, but squares each miss first - so a few big misses move this
+            number a lot more than many small ones. Lower is better.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── FAQ ──────────────────────────────────────────────────────── -->
+<div class="guide-section" id="faq">
+  <div class="guide-section-title">
+    <span class="icon" style="width:28px;height:28px;font-size:14px;">❓</span>
+    FAQ
+  </div>
+
+  <div class="faq-list">
+
+    <div class="faq-item">
+      <div class="desc-title">Why can't I test a freshly trained model against this week's predictions right away?</div>
+      <div class="faq-answer">
+        Grading a prediction requires real consumption to actually be posted for that order week,
+        and that only happens once time - and the normal lag between ordering and consumption -
+        has passed. Until then, the validation score from historical weeks is the best signal available.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="desc-title">My model's validation score looks great - can I trust it right away?</div>
+      <div class="faq-answer">
+        It's a good early signal, but validation weeks are drawn from the same historical stretch
+        as training, so they tend to share the same seasonality and trends the model already
+        learned. Confirm with a <b>Recent week</b> test on the Evaluate page once real data is
+        available - that's the true out-of-sample check.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="desc-title">How often should I retrain a model?</div>
+      <div class="faq-answer">
+        There's no fixed schedule. Good triggers: recent-week test accuracy starts drifting away
+        from the validation score, a new batch of weeks' consumption has been loaded (check the
+        Data Coverage heatmap on Load), or you're heading into a period with unusual demand.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

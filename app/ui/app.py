@@ -191,6 +191,11 @@ def home():
     return render_template("home.html", active="home", changelog=parse_changelog())
 
 
+@app.route("/userguide")
+def userguide():
+    return render_template("userguide.html", active="userguide")
+
+
 # ── DATA / Load ───────────────────────────────────────────────────────────────
 # GET method returns the UI page
 # POST executes when the "Load Data" button is clicked

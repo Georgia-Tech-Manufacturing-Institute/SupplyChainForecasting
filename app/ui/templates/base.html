@@ -20,6 +20,8 @@
   <aside>
     <div class="nav-section">
       <a href="{{ url_for('home') }}" class="nav-item {% if active=='home' %}active{% endif %}" style="font-weight:600;">Home</a>
+      <a href="{{ url_for('userguide') }}" class="nav-item {% if active=='userguide' %}active{% endif %}">User Guide</a>
+
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Data</div>
@@ -33,6 +35,7 @@
       <a href="{{ url_for('predict') }}"  class="nav-item {% if active=='predict'  %}active{% endif %}">Predict</a>
       <a href="{{ url_for('evaluate') }}" class="nav-item {% if active=='evaluate' %}active{% endif %}">Evaluate</a>
     </div>
+
   </aside>
 
   <main>
