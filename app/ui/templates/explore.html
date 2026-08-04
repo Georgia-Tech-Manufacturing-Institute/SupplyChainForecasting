@@ -98,6 +98,7 @@
     <p style="margin-top:8px;"> Model and Waterfall columns utilize the Validation weeks to provide model performance estimates. If no validation weeks were set at the time of training, these cells will be empty. 
       <b>Model</b> columns give the fit quality of the ML model on the validation weeks 
       <b>Waterfall</b> columns score a naive baseline that simply carries forward the most recent known waterfall value.
+      <br>
       <span class="score-better" style="font-style:normal;">Green</span> means the model beat that baseline;
       <span class="score-worse" style="font-style:normal;">red</span> means it underperformed.
     </p>
@@ -250,9 +251,8 @@
     </tbody>
   </table>
 </div>
-
 <p class="section-note" style="margin-top:.75rem;">
-  Green = model outperforms naive baseline &nbsp;·&nbsp; Red = model underperforms baseline &nbsp;·&nbsp; Scores are on the holdout set only.
+  <span class="score-better" style="font-style:normal;">Green</span> = model outperforms naive baseline &nbsp;·&nbsp; <span class="score-worse" style="font-style:normal;">Green</span> = model underperforms baseline &nbsp;·&nbsp; Scores are on the holdout set only.
 </p>
 
 <script>
