@@ -13,6 +13,7 @@ dirs = {
 dirs.update({
     'processed': dirs['data'] / 'processed',
     'saved_models': PROJ_DIR / 'models' / 'saved_models',
+    'run_logs': PROJ_DIR / 'logs' / 'routine_runs',
 })
 
 # INCLUDE NEW PLACES HERE !

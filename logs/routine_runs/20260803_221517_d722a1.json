@@ -1,0 +1,38 @@
+{
+  "run_id": "20260803_221517_d722a1",
+  "script": "routine.py",
+  "plant": "Arlington",
+  "started_at": "2026-07-27T09:01:10",
+  "finished_at": "2026-07-27T09:01:42",
+  "status": "no_new_data",
+  "steps": [
+    {
+      "name": "Generate error report",
+      "status": "success",
+      "message": "",
+      "started_at": "2026-08-03T22:15:17",
+      "finished_at": "2026-08-03T22:15:17"
+    },
+    {
+      "name": "Load Consumption",
+      "status": "skipped",
+      "message": "No new files found",
+      "started_at": "2026-08-03T22:15:17",
+      "finished_at": "2026-08-03T22:15:17"
+    },
+    {
+      "name": "Load Waterfall",
+      "status": "skipped",
+      "message": "No new files found",
+      "started_at": "2026-08-03T22:15:17",
+      "finished_at": "2026-08-03T22:15:17"
+    },
+    {
+      "name": "Load Cost",
+      "status": "skipped",
+      "message": "No new files found",
+      "started_at": "2026-08-03T22:15:17",
+      "finished_at": "2026-08-03T22:15:17"
+    }
+  ]
+}

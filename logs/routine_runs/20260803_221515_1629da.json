@@ -1,0 +1,66 @@
+{
+  "run_id": "20260803_221515_1629da",
+  "script": "routine.py",
+  "plant": "Arlington",
+  "started_at": "2026-07-29T09:04:02",
+  "finished_at": "2026-07-29T09:07:18",
+  "status": "success",
+  "steps": [
+    {
+      "name": "Generate error report",
+      "status": "success",
+      "message": "",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Load Consumption",
+      "status": "success",
+      "message": "2 file(s) loaded and archived",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Load Waterfall",
+      "status": "skipped",
+      "message": "No new files found",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Load Cost",
+      "status": "skipped",
+      "message": "No new files found",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Train model",
+      "status": "success",
+      "message": "18,204 training rows",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Save model",
+      "status": "success",
+      "message": "Arlington_2026wk31_20260729_090512.pkl",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Generate predictions",
+      "status": "success",
+      "message": "6,412 predictions",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    },
+    {
+      "name": "Save predictions",
+      "status": "success",
+      "message": "reports/2026wk31/predictions_Arlington_2026wk31_20260729_090512.xlsx",
+      "started_at": "2026-08-03T22:15:15",
+      "finished_at": "2026-08-03T22:15:15"
+    }
+  ]
+}

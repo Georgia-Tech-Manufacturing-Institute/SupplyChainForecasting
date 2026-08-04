@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}Run History — Forecast Tool{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/train.css') }}" />
+<style>
+  .run-card {
+    margin-bottom: 1rem;
+    padding: 1rem 1.25rem;
+  }
+  .run-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: .9rem;
+  }
+  .run-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .run-plant {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .run-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: monospace;
+  }
+  .run-elapsed {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .run-id {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: monospace;
+  }
+  .run-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .run-badge-success     { background: var(--success-bg); color: #2e7d32; border: 1px solid var(--success-border); }
+  .run-badge-failed      { background: var(--error-bg);   color: #b71c1c; border: 1px solid var(--error-border); }
+  .run-badge-no_new_data { background: var(--bg);         color: var(--text-muted); border: 1px solid var(--border); }
+  .run-badge-running     { background: var(--blue-pale);  color: var(--blue); border: 1px solid var(--blue-light); }
+  .run-badge-interrupted { background: #fff3e0;           color: #e65100; border: 1px solid #ffb74d; }
+
+  /* static (non-polling) step row for a past run */
+  .run-stage-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    margin-bottom: 0;
+    flex-wrap: wrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .run-stage-row .stage-pip { min-width: 96px; }
+  .run-stage-row .pip-circle { width: 24px; height: 24px; font-size: 12px; cursor: default; }
+  .run-stage-row .stage-connector { margin-top: -18px; }
+
+  .pip-skipped .pip-circle { background: var(--bg); border-color: var(--border); color: var(--text-muted); }
+  .pip-skipped .pip-label  { color: var(--text-muted); font-style: italic; }
+  .pip-skipped + .stage-connector { background: var(--border); }
+
+  .pip-running .pip-circle { border-color: var(--blue); background: var(--blue-pale); }
+  .pip-running .pip-label  { color: var(--blue); font-weight: 600; }
+
+  .run-details {
+    margin-top: .85rem;
+    border-top: 1px solid var(--border);
+    padding-top: .6rem;
+  }
+  .run-details summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--blue);
+    font-weight: 600;
+    user-select: none;
+  }
+  .run-step-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: .6rem;
+  }
+  .run-step-table th {
+    text-align: left;
+    padding: 4px 8px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    border-bottom: 1px solid var(--border);
+  }
+  .run-step-table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .run-step-table tr:last-child td { border-bottom: none; }
+  .step-status-tag {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .step-status-success { background: var(--success-bg); color: #2e7d32; }
+  .step-status-failed   { background: var(--error-bg); color: #b71c1c; }
+  .step-status-skipped  { background: var(--bg); color: var(--text-muted); }
+  .step-status-running  { background: var(--blue-pale); color: var(--blue); }
+  .step-msg { color: var(--text-muted); font-family: monospace; word-break: break-word; }
+  .step-msg.step-msg-error { color: #b71c1c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="icon">🛠️</span> Run History
+</div>
+
+<div class="report-description" style="width: 780px;">
+  <div class="desc-title">About this page</div>
+  <div style="font-size:13px; line-height:1.7;">
+    <p>Each time <code>routine.py</code> runs (loading new data, retraining a model, and saving predictions
+    for a plant) it is recorded here as one run. The pipeline for each run is broken into steps —
+    hover or expand a run to see exactly which step succeeded, failed, or was skipped (e.g. because no
+    new file was found for that data type).</p>
+  </div>
+</div>
+
+<br style="margin-top: 20px">
+
+{% if runs %}
+  {% for r in runs %}
+  <div class="card run-card">
+    <div class="run-header">
+      <div class="run-meta">
+        <span class="run-plant">{{ r.plant | title }}</span>
+        <span class="run-time">{{ r.started_at }}</span>
+        <span class="run-elapsed">⏱ {{ r.elapsed_str }}</span>
+        <span class="run-id">{{ r.run_id }}</span>
+      </div>
+      <span class="run-badge run-badge-{{ r.status }}">{{ r.status_label }}</span>
+    </div>
+
+    {% if r.steps %}
+    <div class="stage-row run-stage-row">
+      {% for step in r.steps %}
+        {% set pip_class = {'success': 'pip-done', 'failed': 'pip-error',
+                             'skipped': 'pip-skipped', 'running': 'pip-running'}[step.status] %}
+        <div class="stage-pip {{ pip_class }}" title="{{ step.name }}: {{ step.status }}{% if step.message %} — {{ step.message }}{% endif %}">
+          <div class="pip-circle">
+            {% if step.status == 'success' %}✓
+            {% elif step.status == 'failed' %}✕
+            {% elif step.status == 'skipped' %}–
+            {% endif %}
+          </div>
+          <div class="pip-label">{{ step.name }}</div>
+        </div>
+        {% if not loop.last %}
+          <div class="stage-connector"></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <details class="run-details">
+      <summary>Step details</summary>
+      <table class="run-step-table">
+        <thead>
+          <tr>
+            <th style="width:22%;">Step</th>
+            <th style="width:12%;">Status</th>
+            <th style="width:16%;">Started</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for step in r.steps %}
+          <tr>
+            <td>{{ step.name }}</td>
+            <td><span class="step-status-tag step-status-{{ step.status }}">{{ step.status }}</span></td>
+            <td class="run-time">{{ step.started_at or '—' }}</td>
+            <td class="step-msg {{ 'step-msg-error' if step.status == 'failed' }}">{{ step.message or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% else %}
+      <p class="section-note">No steps recorded yet.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+<div class="card">
+  <p style="color:var(--text-muted,#888); font-style:italic;">
+    No runs recorded yet. Run <code>python app/routine.py &lt;incoming_folder&gt; &lt;plant_source&gt; &lt;archive_folder&gt;</code>
+    to see it appear here.
+  </p>
+</div>
+{% endif %}
+{% endblock %}
