@@ -18,6 +18,7 @@ from app.core.loader import create_connection, consumption_to_sql, waterfall_to_
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
 from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
+from app.core.run_logger import list_runs
 import sqlite3
 from app.prefixe import dirs, raw_dir, PLANT_SOURCES, pre
 
@@ -449,6 +450,54 @@ def model_retrain_config(name):
         'wk_divisor':          scale_cfg.get('wk_divisor', 52),
         'other_scale':         scale_cfg.get('other_scale') or '',
     })
+
+
+# ── AUTOMATION / Run History ────────────────────────────────────────────────
+_RUN_STATUS_LABELS = {
+    'success':     'Success',
+    'failed':      'Failed',
+    'no_new_data': 'No new data',
+    'running':     'In progress',
+    'interrupted': 'Interrupted',
+}
+
+def _fmt_elapsed(started_at, finished_at):
+    if not started_at:
+        return '—'
+    try:
+        start = datetime.fromisoformat(started_at)
+        end = datetime.fromisoformat(finished_at) if finished_at else datetime.now()
+    except ValueError:
+        return '—'
+    secs = int((end - start).total_seconds())
+    if secs < 60:
+        return f"{secs}s"
+    mins, secs = divmod(secs, 60)
+    if mins < 60:
+        return f"{mins}m {secs}s"
+    hrs, mins = divmod(mins, 60)
+    return f"{hrs}h {mins}m"
+
+def _format_run(run):
+    status = run.get('status', 'running')
+    # A run stuck in 'running' for a long time almost certainly crashed
+    # without a chance to record its own failure (killed process, etc).
+    if status == 'running':
+        try:
+            started = datetime.fromisoformat(run['started_at'])
+            if (datetime.now() - started).total_seconds() > 2 * 3600:
+                status = 'interrupted'
+        except (ValueError, KeyError):
+            pass
+    run['status'] = status
+    run['status_label'] = _RUN_STATUS_LABELS.get(status, status)
+    run['elapsed_str'] = _fmt_elapsed(run.get('started_at'), run.get('finished_at'))
+    return run
+
+@app.route("/runs")
+def runs():
+    return render_template("runs.html", active="runs",
+                           runs=[_format_run(r) for r in list_runs()])
 
 
 # ── DATA / Reports ────────────────────────────────────────────────────────────
