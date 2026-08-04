@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forecast Tool — Startup Troubleshooting Guide</title>
+<style>
+  :root {
+    --navy:        #1a3a5c;
+    --navy-deep:   #12283f;
+    --blue:        #2e6da4;
+    --blue-light:  #5b9bd5;
+    --blue-pale:   #cce0f5;
+    --tan:         #b5a060;
+    --tan-hover:   #9e8a50;
+    --bg:          #f4f6f9;
+    --card:        #ffffff;
+    --border:      #c8d4e0;
+    --text:        #1a2a3a;
+    --text-muted:  #5a7080;
+    --ok-bg:       #e6f4ea;
+    --ok-border:   #4caf50;
+    --ok-text:     #2c6b33;
+    --err-bg:      #fdecea;
+    --err-border:  #e53935;
+    --err-text:    #a32b26;
+    --code-bg:     #eef2f7;
+    --radius:      8px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --navy:        #16324f;
+      --navy-deep:   #0d2036;
+      --blue:        #6ba3d6;
+      --blue-light:  #7fb2de;
+      --blue-pale:   #1f3a52;
+      --tan:         #cdb37c;
+      --tan-hover:   #d9c393;
+      --bg:          #101b28;
+      --card:        #17273a;
+      --border:      #2b415a;
+      --text:        #e6edf5;
+      --text-muted:  #93a8bd;
+      --ok-bg:       #16301f;
+      --ok-border:   #4caf50;
+      --ok-text:     #8fd39a;
+      --err-bg:      #3a1a1a;
+      --err-border:  #e0554f;
+      --err-text:    #f0a29e;
+      --code-bg:     #0f1e2c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy:        #16324f;
+    --navy-deep:   #0d2036;
+    --blue:        #6ba3d6;
+    --blue-light:  #7fb2de;
+    --blue-pale:   #1f3a52;
+    --tan:         #cdb37c;
+    --tan-hover:   #d9c393;
+    --bg:          #101b28;
+    --card:        #17273a;
+    --border:      #2b415a;
+    --text:        #e6edf5;
+    --text-muted:  #93a8bd;
+    --ok-bg:       #16301f;
+    --ok-border:   #4caf50;
+    --ok-text:     #8fd39a;
+    --err-bg:      #3a1a1a;
+    --err-border:  #e0554f;
+    --err-text:    #f0a29e;
+    --code-bg:     #0f1e2c;
+  }
+  :root[data-theme="light"] {
+    --navy:        #1a3a5c;
+    --navy-deep:   #12283f;
+    --blue:        #2e6da4;
+    --blue-light:  #5b9bd5;
+    --blue-pale:   #cce0f5;
+    --tan:         #b5a060;
+    --tan-hover:   #9e8a50;
+    --bg:          #f4f6f9;
+    --card:        #ffffff;
+    --border:      #c8d4e0;
+    --text:        #1a2a3a;
+    --text-muted:  #5a7080;
+    --ok-bg:       #e6f4ea;
+    --ok-border:   #4caf50;
+    --ok-text:     #2c6b33;
+    --err-bg:      #fdecea;
+    --err-border:  #e53935;
+    --err-text:    #a32b26;
+    --code-bg:     #eef2f7;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Segoe UI Semibold", -apple-system, system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  code, .mono {
+    font-family: Consolas, "Cascadia Mono", ui-monospace, Menlo, monospace;
+  }
+
+  header.band {
+    background: linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%);
+    color: #fff;
+    padding: 36px 24px 30px;
+  }
+  header.band .inner { max-width: 900px; margin: 0 auto; }
+  header.band .kicker {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--blue-light);
+    margin-bottom: 8px;
+  }
+  header.band h1 {
+    margin: 0 0 10px;
+    font-size: 27px;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+  header.band p {
+    margin: 0;
+    max-width: 58ch;
+    color: #cbd9e6;
+    font-size: 14.5px;
+  }
+
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 30px 24px 80px;
+  }
+
+  .scope {
+    display: flex;
+    gap: 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--blue);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 34px;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .scope strong { color: var(--text); }
+
+  h2.section-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--blue);
+    margin: 44px 0 14px;
+  }
+  h2.section-title:first-of-type { margin-top: 0; }
+
+  /* normal sequence strip */
+  .sequence {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .seq-step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 14px 16px;
+  }
+  .seq-step .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--blue-pale);
+    color: var(--blue);
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .seq-step .title { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+  .seq-step .desc { font-size: 12.5px; color: var(--text-muted); }
+  .seq-step code {
+    display: block;
+    margin-top: 8px;
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* phase group intro */
+  .phase-intro {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    margin: 8px 0 16px;
+  }
+
+  details.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  details.card > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::before {
+    content: "›";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    font-size: 16px;
+    color: var(--text-muted);
+    transform: rotate(0deg);
+    transition: transform .15s ease;
+    flex-shrink: 0;
+  }
+  details.card[open] > summary::before { transform: rotate(90deg); }
+  details.card > summary:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -2px;
+  }
+  .tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .tag.err  { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); }
+  .tag.slow { background: var(--blue-pale); color: var(--blue); border: 1px solid var(--blue-light); }
+
+  .card-body {
+    padding: 0 16px 18px 41px;
+    font-size: 13.5px;
+    color: var(--text);
+  }
+  .card-body .label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--text-muted);
+    margin: 12px 0 5px;
+  }
+  .card-body .label:first-child { margin-top: 4px; }
+  .card-body p { margin: 0 0 8px; color: var(--text-muted); }
+  .card-body ol, .card-body ul { margin: 0; padding-left: 19px; }
+  .card-body li { margin-bottom: 6px; color: var(--text); }
+  .card-body li:last-child { margin-bottom: 0; }
+  pre.code-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    overflow-x: auto;
+    color: var(--text);
+    margin: 6px 0;
+  }
+
+  .fix-flag {
+    display: inline-block;
+    background: var(--tan);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    border-radius: 4px;
+    padding: 2px 7px;
+    margin: 12px 0 5px;
+  }
+
+  .callout {
+    display: flex;
+    gap: 12px;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 13.5px;
+    margin: 40px 0 20px;
+  }
+  .callout.ok {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-border);
+    color: var(--ok-text);
+  }
+  .callout .icon { flex-shrink: 0; font-weight: 700; }
+
+  footer {
+    max-width: 760px;
+    margin: 10px auto 0;
+    padding: 20px 24px 40px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+  }
+  footer strong { color: var(--text); }
+
+  @media (max-width: 640px) {
+    .sequence { grid-template-columns: 1fr; }
+    header.band h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="inner">
+    <div class="kicker">Forecast Tool</div>
+    <h1>Startup Troubleshooting Guide</h1>
+  </div>
+</header>
+
+<main>
+
+  <div class="scope">
+    <div>
+      Start the app by clicking the ⭐ SCM Forecaster shortcut on your homescreen. This should run the Forecast.bat file, which is what initaties all of the code that comprises the app itself. 
+    </div>
+  </div>
+
+  <h2 class="section-title">What Should Happen</h2>
+  <div class="sequence">
+    <div class="seq-step">
+      <div class="num">1</div>
+      <div class="title">A black window opens</div>
+      <div class="desc">Briefly, running Python. It stays open while the app is running — closing it shuts the app down.</div>
+      <img src="assets/python.png" width="300">
+    </div>
+    <div class="seq-step">
+      <div class="num">2</div>
+      <div class="title">Your browser opens</div>
+      <div class="desc">To 127.0.0.1:5000, landing on the Forecast Tool home page.</div>
+      <img src="assets/interface.png" alt="interface image" width="500" >
+    </div>
+  </div>
+
+  <div class="callout ok">
+    <span class="icon">✓</span>
+    <span>Good to know: the black window is not an error by itself — it's the app's engine
+      room. Minimize it if it's in the way, but leave it running.</span>
+  </div>
+
+  <!-- PHASE 1 -->
+  <h2 class="section-title">Shortcut Errors</h2>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> Nothing happens at all — no window, no browser</summary>
+    <div class="card-body">
+      <p>The shortcut itself is broken, or it's pointing at a <code>.bat</code> file that no
+        longer exists at that location.</p>
+      <div class="fix-flag">Fix</div>
+      <ol>
+        <li>Right-click the shortcut → <strong>Properties</strong>, and check the <strong>Target</strong> field
+          points at the real <code>.bat</code> file.</li>
+        <li>Browse to that folder directly and double-click the <code>.bat</code> file itself. If that also does
+          nothing, the file may have been moved, renamed, or deleted — reinstall or ask whoever set up the
+          shortcut for a fresh copy.</li>
+      </ol>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag slow">Warning</span> Windows shows a blue "protected your PC" screen</summary>
+    <div class="card-body">
+      <p>SmartScreen doesn't recognize the script yet. This is expected the first time a
+        new <code>.bat</code> file runs on a machine — it isn't a sign anything is broken.</p>
+      <div class="fix-flag">Fix</div>
+      <ol>
+        <li>Click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+        <li>If that option is missing, your machine's security policy is blocking it — contact whoever
+          manages your computer to allow the script.</li>
+      </ol>
+    </div>
+  </details>
+
+  <!-- PHASE 2 -->
+  <h2 class="section-title">Python Errors</h2>
+  <p class="phase-intro">The window opened, but closed on its own, or shows text you don't recognize.
+    Because the shortcut launches Python directly (not through a Command Prompt), the window closes
+    itself the instant Python stops — including when it crashes. If it closes too fast to read, see
+    <a href="#read-error" style="color:var(--blue)">"How to actually read the error"</a> below.</p>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> Window flashes open and closes immediately</summary>
+    <div class="card-body">
+      <p>Python hit an error and exited right away — you just couldn't read it before the window
+        closed. This is the single most common startup complaint, and the message underneath is
+        almost always one of the other entries in this section.</p>
+      <div class="fix-flag">Fix</div>
+      <p>Jump to <a href="#read-error" style="color:var(--blue)">"How to actually read the error"</a> to
+        capture the real message, then match it against the entries below.</p>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> "'python' is not recognized as an internal or external command"</summary>
+    <div class="card-body">
+      <p>Windows can't find a Python installation on this computer's PATH — either Python isn't
+        installed, or it was installed without the "Add to PATH" option checked.</p>
+      <div class="fix-flag">Fix</div>
+      <ol>
+        <li>Open Command Prompt and run <code>python --version</code>. If that also fails, install
+          Python from python.org, making sure to check <strong>"Add python.exe to PATH"</strong>
+          during setup.</li>
+        <li>If Python <em>is</em> installed but this still fails, it likely needs to be reinstalled with
+          that box checked — unchecking it is the most common cause.</li>
+      </ol>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> "The system cannot find the file specified" / "No such file or directory"</summary>
+    <div class="card-body">
+      <p>The path in the shortcut's <code>.bat</code> file doesn't match where the app actually lives
+        on this computer — commonly because the Windows username in the path (<code>C:\Users\<em>user</em>\...</code>)
+        was never updated to match the real account, or the project folder was moved.</p>
+      <div class="fix-flag">Fix</div>
+      <ol>
+        <li>Find the app's actual folder (search for <code>app.py</code> if unsure).</li>
+        <li>Right-click the <code>.bat</code> file → <strong>Edit</strong> (opens in Notepad), and correct the
+          path on the <code>start "" python "..."</code> line to match exactly, then save.</li>
+      </ol>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> "ModuleNotFoundError: No module named 'flask'" (or pandas, sklearn, etc.)</summary>
+    <div class="card-body">
+      <p>Python itself started, but the packages the app depends on aren't installed for that
+        Python — common if there are multiple Pythons on the machine (e.g. one from the Microsoft
+        Store and one from python.org) and the shortcut is reaching a different one than expected.</p>
+      <div class="fix-flag">Fix</div>
+      <p>Open Command Prompt in the app's project folder and run:</p>
+      <pre class="code-block">pip install -r requirements.txt</pre>
+      <p>If it still can't find the packages after that, run <code>where python</code> to see which
+        installation is being used, and confirm it's the same one the install command ran against.</p>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> "OSError: [WinError 10048] ... address already in use"</summary>
+    <div class="card-body">
+      <p>Something is already using port 5000 — almost always a Forecast Tool instance from an
+        earlier launch that's still running quietly in the background. Closing the browser tab does
+        <strong>not</strong> stop the app; only closing (or Ctrl+C'ing) the black window does.</p>
+      <div class="fix-flag">Fix</div>
+      <ol>
+        <li>Open Task Manager → look for a <code>python.exe</code> process (there may be two — the
+          app starts a helper process alongside itself) and <strong>End Task</strong> on it/them.</li>
+        <li>Re-run the shortcut.</li>
+        <li>Going forward, close the black window when you're done using the tool, rather than just
+          closing the browser tab.</li>
+      </ol>
+    </div>
+  </details>
+
+  <h2 class="section-title">Browser Errors</h2>
+  <p class="phase-intro">The black window is still open, but the browser tab isn't showing the app.</p>
+
+  <details class="card">
+    <summary><span class="tag err">Error</span> "This site can't be reached" / "127.0.0.1 refused to connect"</summary>
+    <div class="card-body">
+      <p>The browser opened right on schedule — 3 seconds after launch — but the app wasn't quite
+        ready to answer yet. On a slower computer, or the first run after a restart, loading the
+        app's data and models can take longer than 3 seconds.</p>
+      <div class="fix-flag">Fix</div>
+      <ol>
+        <li>Check the black window: if it's still open and not showing an error, the app is likely
+          fine and just needs a few more seconds.</li>
+        <li>Wait 10-15 seconds, then reload the browser tab (F5) or revisit
+          <code>http://127.0.0.1:5000</code> manually.</li>
+        <li>If you are still getting the same error, try typing
+          <code>http://127.0.0.1:5000</code> into an incognito browser.</li>
+
+      </ol>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag slow">Warning</span> A Windows Firewall pop-up appears</summary>
+    <div class="card-body">
+      <p>Windows is asking permission for Python to communicate on the network — this happens the
+        first time the app runs on a machine, since it needs to serve the page to your browser.</p>
+      <div class="fix-flag">Fix</div>
+      <p>Click <strong>Allow access</strong> (Private networks is sufficient). If you click Cancel or the
+        pop-up times out, the browser tab will fail to load and the fix above won't help — relaunch
+        the shortcut so the pop-up appears again.</p>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary><span class="tag slow">Warning</span> Every launch opens a new browser tab, even though it was already open</summary>
+    <div class="card-body">
+      <p>Harmless, but a sign the app was already running from an earlier launch that never got
+        closed — the shortcut doesn't check for that before starting a new browser tab.</p>
+      <div class="fix-flag">Fix</div>
+      <p>Not urgent, but if it happens repeatedly, check Task Manager for leftover
+        <code>python.exe</code> processes as described above, and close the black window instead of
+        just the browser tab when you're finished for the day.</p>
+    </div>
+  </details>
+
+  <h2 class="section-title" id="read-error">How to Actually Read the Error</h2>
+  <p class="phase-intro">
+    Since the black window can close itself before you can read it, run the same command from a
+    window that stays open:
+  </p>
+  <ol style="font-size:13.5px; padding-left:20px; margin-bottom:8px;">
+    <li style="margin-bottom:8px;">Open the Start Menu, type <code>cmd</code>, and press Enter to open Command Prompt.</li>
+    <li style="margin-bottom:8px;">Type <code>cd</code> followed by a space, then drag the app's project folder into the
+      window (this fills in the path), and press Enter.</li>
+    <li style="margin-bottom:8px;">Run:
+      <pre class="code-block">python app\ui\app.py</pre>
+    </li>
+    <li>Whatever error appears will stay on screen — that's the exact message to match against
+      the list above, or to share if you're asking someone else for help.</li>
+  </ol>
+
+  <div class="callout ok">
+    <span class="icon">✓</span>
+    <span>Once you see the app running from Command Prompt this way (it'll print something like
+      <code class="mono">Running on http://127.0.0.1:5000</code>), open a browser and go to that
+      address manually — you're back up and running even without the shortcut.</span>
+  </div>
+
+</main>
+
+<footer>
+  <strong>Before asking for help</strong>, note: (1) exactly what you clicked, (2) whether the black
+  window opened at all, and (3) the exact error text from the Command Prompt steps above — that's
+  almost always enough to diagnose remotely.
+</footer>
+
+</body>
+</html>
