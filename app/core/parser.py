@@ -37,6 +37,31 @@ def cast_to_into(series, to_int=True):
     return floated.astype(int) if to_int else floated
 
 # ============ PARSE WATERFALL FILES ============ 
+
+def autoWaterfiler(folder):
+    # folder; posixpath 
+    df = pd.read_csv(folder / 'AT_custdemand.txt', sep='|')
+    df.columns = [col.replace(' ', '') for col in df.columns]
+
+    dates = [col for col in df.columns if '/' in col]
+
+    all_parts = (
+        df.melt(
+            id_vars=waterfall_header,
+            value_vars=dates,
+            var_name='OrderDate',
+            value_name=pre['pq']
+        )
+        .dropna(subset=[pre['pq']])
+    )
+    all_parts.OrderDate = pd.to_datetime(all_parts.OrderDate, format="%m/%d/%y")
+    all_parts.RelDate = pd.to_datetime(all_parts.RelDate, format = "%m/%d/%y")
+    all_parts["Lookahead"] = all_parts.OrderDate - all_parts.RelDate
+    # Eliminate cases where ReleaseDate/OrderDate/Qty triples are for the "past" 
+    # NB: We use when lookahead is less than 2 weeks as some cases include the 
+    all_parts = all_parts[all_parts.Lookahead.dt.days > -14]
+    return all_parts
+
 def readWaterfallGroup(f):
     dates = []
     partGroup = True # Group all sharing a single PN
@@ -71,6 +96,7 @@ def readWaterfallGroup(f):
     return df.replace('', np.nan), dates
 
 def waterfallParse(file):
+    # Files need to bbe read stupidly bc big
     all_parts = pd.DataFrame([])
     with open(file) as f:
         while True:
@@ -94,6 +120,21 @@ def waterfallParse(file):
     return all_parts
     #all_parts.to_csv(out, sep="|", mode='a', index=False, header=first)
 
+def custDemandParse(folder):
+    df = pd.read_csv(folder / 'AT_custdemand.txt', sep='|')
+    df.columns = [col.replace(' ', '') for col in df.columns]
+    dates = [col for col in df.columns if '/' in col]
+    melted = (
+        df.melt(
+            id_vars=waterfall_header,
+            value_vars=dates,
+            var_name='OrderDate',
+            value_name=pre['pq']
+        )
+        .dropna(subset=[pre['pq']])
+    )
+    return waterfallProcess(melted)
+
 def waterfallProcess(wf):
     # Takes output of waterfallParse; makes it more beautiful. 
     wf_df = wf.copy()
@@ -112,8 +153,10 @@ def waterfallProcess(wf):
                 "Week#","OrderDate", "Lookahead"], axis=1, inplace=True, errors='ignore')
     wf_df = wf_df.drop_duplicates(keep='first')
     wf_df.Part = wf_df.Part.astype(str)
-    wf_df.PCR = cast_to_into(wf.PCR)
-    wf_df[pre['pq']] = cast_to_into(wf[pre['pq']])
+    if wf_df.PCR.dtype == str:
+        wf_df.PCR = cast_to_into(wf.PCR)
+    if wf_df[pre['pq']].dtype == str:
+        wf_df[pre['pq']] = cast_to_into(wf[pre['pq']])
 
     return wf_df
 

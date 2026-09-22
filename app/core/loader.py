@@ -76,6 +76,7 @@ def list_column_names(cursor, table):
     return columns
 
 accepted_types = {'prn', 'txt'}
+
 def parse_file_convention(filename, pattern=r'(\d+)wk(\d{2})'):
     pattern = re.compile(pattern,re.IGNORECASE)
     m = re.search(pattern, filename)
@@ -84,7 +85,7 @@ def parse_file_convention(filename, pattern=r'(\d+)wk(\d{2})'):
         return yr, wk
     else:
         raise ValueError("Filename does not match expected pattern")
-
+    
 def validate_type(file):
     return any(str(file).endswith(at) for at in accepted_types)
 
@@ -97,6 +98,7 @@ def filter_disjoint(wf, consumption):
     wf = wf[~wf.Part.isin(disjoint)].reset_index(drop=True)
     consumption = consumption[~consumption.Part.isin(disjoint)].reset_index(drop=True)
     return wf, consumption
+
 
 def consumption_to_sql(conn, consump_dir, overwrite=False):
     # Todo check for file duplication based on loaded_files table
@@ -111,32 +113,32 @@ def consumption_to_sql(conn, consump_dir, overwrite=False):
             print("     Skipping ", filename, " identical copy processed; suppress this behavior by setting overwrite=True")
             if not overwrite:
                 continue
-        try:
-            year, week = parse_file_convention(filename)
-        except ValueError as e:
-            print("     Skipping ", filename)
-            print("          ", e)
-            continue
-        idx = week_to_idx(year, week)
-        if idx in list(loaded.week_idx):
-            print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
-            continue        
+        # Suppress prior year/week logic; 
+        # try:
+        #     year, week = parse_file_convention(filename)
+        # except ValueError as e:
+        #     print("     Skipping ", filename)
+        #     print("          ", e)
+        #     continue
+        # idx = week_to_idx(year, week)
+        # if idx in list(loaded.week_idx):
+        #     print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
+        #     continue        
         
         input_path = consump_dir / filename
-        if validate_type(input_path):
-            yr, wk = parse_file_convention(filename)
-            test = consumpParse(input_path, year=yr, week=wk,
-                                cols= ["Site", "Item Number", "Description", "UM",
-                                        "Type", "Type1", "Quantity1", "Type2", "Quantity2"])
-            print("     Processing: ", filename, f' as Yr{yr}Wk{wk}')
-            filt = filter_partno(test, col='Part')
-            if len(filt)>0:
-                filt = filt.groupby(['Part', pre['oi']]).sum(numeric_only=True).reset_index()
-                filt = filt.rename({'Quantity1': pre['oq']}, axis=1    )
-                d_rows = load_to_sql(conn, 'consumption', filt)
-                print(f"          Changed {d_rows} rows")
-                widx = week_to_idx(yr, wk)
-                update_loaded_files(conn, filename, 'consumption', widx)
+        # yr, wk = parse_file_convention(filename)
+        # test = consumpParse(input_path, year=yr, week=wk,
+        #                     cols= ["Site", "Item Number", "Description", "UM",
+        #                             "Type", "Type1", "Quantity1", "Type2", "Quantity2"])
+        # print("     Processing: ", filename, f' as Yr{yr}Wk{wk}')
+        # filt = filter_partno(test, col='Part')
+        if len(filt)>0:
+            filt = filt.groupby(['Part', pre['oi']]).sum(numeric_only=True).reset_index()
+            filt = filt.rename({'Quantity1': pre['oq']}, axis=1    )
+            d_rows = load_to_sql(conn, 'consumption', filt)
+            print(f"          Changed {d_rows} rows")
+            widx = week_to_idx(yr, wk)
+            update_loaded_files(conn, filename, 'consumption', widx)
 
 def get_loaded_files(conn, filter_type=None):
     loaded = filter_SQL(conn, table='loaded_files')
