@@ -1,6 +1,7 @@
 
 Stores prior versions of the model. Metadata should include the span of dates and features that the model was trained with as well as performance statistics. 
 
+MOST IMPORTANT NOTE: This set of features has room to grow and expand with the data 
 
 # features.py
 
