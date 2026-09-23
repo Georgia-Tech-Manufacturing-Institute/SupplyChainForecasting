@@ -76,6 +76,8 @@ def release_gp_variation(agg_frame, col, unit=None):
         ], axis=1).reset_index()
     return release_accuracy
 
+
+
 def waterfall_features(frame, progress_cb=None):
     """
     progress_cb(step, total, message) — called during the walk-forward loop so
@@ -88,7 +90,11 @@ def waterfall_features(frame, progress_cb=None):
 
     # Last prediction for the same part
     df[f'{pq}_lag_qty'] = df.groupby("part").shift(1)[pq]
+    g = df.groupby("part")[pq]
+    df[f"{pq}_lag_diff"] = df[pq] - df[f"{pq}_lag_qty"]
     df['lag_ratio'] = df[f'{pq}_lag_qty']/(df[pq]+1)
+    for i in np.arange(3, 12, 3):
+        df[f"{pq}_momentum_{i}"] = df[pq] - g.shift(i)
 
     df = grouped_column_statistics(df, value_col=pq, sort_col=pi,
                                    prefix=pq, unit='qty')
@@ -120,9 +126,9 @@ def consumption_features(frame):
     # Create features based on consumption data - for each order date, what was the context of prior ordering behavior
     newcf = cf[["part", oi, oq]].sort_values(["part", oi])
     part_group = newcf.groupby("part")
-    newcf[f'{oq}_1wkdiff_qty'] = part_group[oq].diff()
-    newcf[f'{oq}_4wkdiff_qty'] = part_group[oq].diff(4)
-    
+    lagged = part_group[oq].shift(1)
+    newcf[f'{oq}_1wkdiff_qty'] = lagged.groupby(newcf["part"]).diff()
+    newcf[f'{oq}_4wkdiff_qty'] = lagged.groupby(newcf["part"]).diff(4)    newcf = cf[["part", oi, oq]].sort_values(["part", oi])
     for i in range(2,5): # Local history for ordering - how past 
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
     # Overall 
@@ -182,6 +188,7 @@ def seasonal_index_features(df, idx_col):
     week_of_year = df[idx_col] % 52
     df[f'{idx_col}_woy'] = week_of_year
     df[f'{idx_col}_quarter'] = week_of_year // 13
+    df[f'{idx_col}_woq'] = week_of_year - df[f'{idx_col}_quarter']*13
     return df
 
 
