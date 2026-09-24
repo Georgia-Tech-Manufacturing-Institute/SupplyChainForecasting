@@ -36,11 +36,14 @@ def build_training_dataset(conn, min_orderidx: int = None,
     waterfall   = waterfall_features(wf, progress_cb=progress_cb)
     consumption = consumption_features(cf)
 
-    merged = (
-        waterfall
-        .merge(consumption, on=['part', oi], how='left')
-        .sort_values([pi, 'part', oi])
-    )
+    # do NOT merge on the order date; that will give an old week access to "future" info. 
+    # Instead, we give order data from when the prediction is made  
+    consumption[pi] = consumption[oi]
+
+    merged = pd.merge(left=consumption.drop(oi, axis=1), right=waterfall,
+                on=['part', pi], 
+                how='right').sort_values([pi, 'part'])
+
     merged = acc_features(merged)
     merged = pd.concat([merged,
                         id_features(merged['part'], 8)], axis=1)
@@ -117,12 +120,11 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
 
     waterfall   = waterfall_features(wf)
     consumption = consumption_features(cf)
+    consumption[pi] = consumption[oi]
 
-    merged = (
-        waterfall
-        .merge(consumption, on=['part', oi], how='left')
-        .sort_values([pi, 'part', oi])
-    )
+    merged = pd.merge(left=consumption.drop(oi, axis=1), right=waterfall,
+                on=['part', pi], 
+                how='right').sort_values([pi, 'part'])
     merged = acc_features(merged)
 
     # Keep everything since the requested prediction week(s): known-consumption

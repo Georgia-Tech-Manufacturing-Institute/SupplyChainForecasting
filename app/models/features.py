@@ -128,7 +128,7 @@ def consumption_features(frame):
     part_group = newcf.groupby("part")
     lagged = part_group[oq].shift(1)
     newcf[f'{oq}_1wkdiff_qty'] = lagged.groupby(newcf["part"]).diff()
-    newcf[f'{oq}_4wkdiff_qty'] = lagged.groupby(newcf["part"]).diff(4)    newcf = cf[["part", oi, oq]].sort_values(["part", oi])
+    newcf[f'{oq}_4wkdiff_qty'] = lagged.groupby(newcf["part"]).diff(4) 
     for i in range(2,5): # Local history for ordering - how past 
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
     # Overall 
