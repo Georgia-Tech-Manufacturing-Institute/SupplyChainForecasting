@@ -26,13 +26,54 @@ def get_wf_cf(plant):
         raise ValueError(f"No database found for plant '{plant}'")
     conn = sqlite3.connect(db_path)
     wf = filter_SQL(conn, table='waterfall_agg')
-    cf = filter_SQL(conn, table='consumption')
+    cf = filter_SQL(conn, table='consumption_agg')
     conn.close()
     return wf, cf
 
 def merged_data(plant):
     wf, cf = get_wf_cf(plant)
     return wf.merge(cf, on=['part', pre['oi']], how='inner')
+
+
+def plant_stats(plant):
+    """Return summary stats for a plant's database, or None if it has no
+    database yet: weeks of data loaded for waterfall/consumption, unique
+    parts seen in each, and how many of those parts have cost data.
+
+    Consumption figures come from `consumption_agg` — the closed, fully
+    aggregated weeks. `weeks_pending` counts weeks still sitting in the
+    `consumption` landing table, i.e. partial weeks waiting on the rest of
+    their transactions before they can be totalled."""
+    db_path = plant_db(plant)
+    if not db_path.exists():
+        return None
+
+    conn = sqlite3.connect(db_path)
+    try:
+        def scalar(query):
+            row = conn.execute(query).fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+        return {
+            # Read weeks directly off the data tables rather than loaded_files,
+            # so the counts hold for databases built by the legacy .prn loaders
+            # too (those predate per-week loaded_files bookkeeping).
+            'weeks_waterfall':   scalar("SELECT COUNT(DISTINCT predidx) FROM waterfall_agg"),
+            'weeks_consumption': scalar("SELECT COUNT(DISTINCT orderidx) FROM consumption_agg"),
+            'weeks_pending':     scalar("SELECT COUNT(DISTINCT orderidx) FROM consumption"),
+            'parts_waterfall':   scalar("SELECT COUNT(DISTINCT part) FROM waterfall_agg"),
+            'parts_consumption': scalar("SELECT COUNT(DISTINCT part) FROM consumption_agg"),
+            'parts_with_cost':   scalar("""
+                SELECT COUNT(DISTINCT part) FROM (
+                    SELECT part FROM waterfall_agg
+                    UNION
+                    SELECT part FROM consumption_agg
+                ) AS all_parts
+                WHERE part IN (SELECT DISTINCT part FROM cost)
+            """),
+        }
+    finally:
+        conn.close()
 
 
 def get_coverage_counts(plant):
@@ -49,7 +90,7 @@ def get_coverage_counts(plant):
         )
         cf = pd.read_sql_query(
             "SELECT orderidx, COUNT(DISTINCT part) AS count "
-            "FROM consumption GROUP BY orderidx ORDER BY orderidx",
+            "FROM consumption_agg GROUP BY orderidx ORDER BY orderidx",
             conn,
         )
         conn.close()

@@ -103,7 +103,9 @@ def waterfall_features(frame, progress_cb=None):
     df[f'{pq}_max_qty'] = df.groupby("part")[pq].cummax()
 
     df = demand_share_features(df)
-    df = prediction_local_summation(df)
+    df = prediction_local_summation(df, 3)
+    df = prediction_local_summation(df, 5)
+    df = prediction_local_summation(df, 7)
     df = prediction_maturity_features(df)
     df = relative_magnitude_features(df)
     df = seasonal_index_features(df, oi) 
@@ -116,6 +118,8 @@ def normalize_qty_features(frame, div_col = f'{pq}_max_qty'):
 
 def consumption_features(frame):
     # Consumption data has one row per part per order week
+    # Consumption is merged with waterfall based on the waterfall predidx and consumption orderidx;
+    # ie consumption info available at the time of prediction ONLY 
     cf = frame.copy()
 
     # Ignore parts that are never consumed
@@ -126,13 +130,13 @@ def consumption_features(frame):
     # Create features based on consumption data - for each order date, what was the context of prior ordering behavior
     newcf = cf[["part", oi, oq]].sort_values(["part", oi])
     part_group = newcf.groupby("part")
-    lagged = part_group[oq].shift(1)
-    newcf[f'{oq}_1wkdiff_qty'] = lagged.groupby(newcf["part"]).diff()
-    newcf[f'{oq}_4wkdiff_qty'] = lagged.groupby(newcf["part"]).diff(4) 
+    newcf[f'{oq}_1wkdiff_qty'] = part_group[oq].diff()
+    newcf[f'{oq}_4wkdiff_qty'] = part_group[oq].diff(4)
+    
     for i in range(2,5): # Local history for ordering - how past 
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
     # Overall 
-    newcf = grouped_column_statistics(newcf, value_col=oq, prefix=oq, unit='qty', sort_col=oq)
+    newcf = grouped_column_statistics(newcf, value_col=oq, prefix=oq, unit='qty', sort_col=oi)
 
     # Time since last orders: ordering regularity
     newcf[f'{oq}_gap_wk'] = part_group[oi].diff()
@@ -150,7 +154,7 @@ def prediction_local_summation(pf, lookback_wks=3):
             .apply(lambda df: df.rolling(lookback_wks, min_periods=1).sum())
     )
     rolled = rolled.reset_index().melt(
-        id_vars=['part', oi], var_name=pi, value_name='prior_sum_3wk_qty'
+        id_vars=['part', oi], var_name=pi, value_name=f'prior_sum_{lookback_wks}wk_qty'
     )
     return df.merge(rolled, on=['part', oi, pi], how='left')
 

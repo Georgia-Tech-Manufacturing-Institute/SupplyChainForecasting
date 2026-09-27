@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from app.reporting.data_quality import coverage_report
 from app.reporting.history_report import error_report
-from app.reporting.core import get_coverage_counts
+from app.reporting.core import get_coverage_counts, plant_stats
 from app.core.parser import week_to_idx, idx_to_week
 from app.core.loader import create_connection, consumption_to_sql, waterfall_to_sql, cost_to_sql, filter_SQL
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
@@ -20,6 +20,7 @@ from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.core.run_logger import list_runs
 import sqlite3
+from app import prefixe
 from app.prefixe import dirs, raw_dir, PLANT_SOURCES, pre
 
 # !!!! Run from command line with "python app/ui/app.py" from project root
@@ -189,7 +190,31 @@ def index():
 
 @app.route("/home")
 def home():
-    return render_template("home.html", active="home", changelog=parse_changelog())
+    stats = {}
+    for p in PLANT_SOURCES:
+        try:
+            stats[p] = plant_stats(p.lower())
+        except Exception:
+            stats[p] = None
+    return render_template("home.html", active="home", changelog=parse_changelog(),
+                           plant_sources=PLANT_SOURCES, plant_stats=stats,
+                           plant_result=request.args.get("plant_result"),
+                           plant_error=request.args.get("plant_error"))
+
+
+@app.route("/plants/add", methods=["POST"])
+def add_plant():
+    global PLANT_SOURCES
+    name = request.form.get("plant_name", "").strip()
+    try:
+        prefixe.add_plant(name)
+        PLANT_SOURCES = prefixe.PLANT_SOURCES
+        # Initialize the SQL database (creates the .db file and schema) now.
+        conn = create_connection(plant=name.lower())
+        conn.close()
+        return redirect(url_for("home", plant_result=f"Added plant '{name}' and initialized its database."))
+    except Exception as exc:
+        return redirect(url_for("home", plant_error=str(exc)))
 
 
 @app.route("/userguide")

@@ -4,6 +4,7 @@
 
 import numpy as np 
 import pandas as pd 
+from app.core.common import *
 from app.prefixe import pre
  
 def timeFilter(df, year):
@@ -138,30 +139,6 @@ def readWaterfallGroup(f):
     return df.replace('', np.nan), dates
 
 
-def costPrep(cost_file):
-    costdata = stateParse(cost_file)
-    cols = ['Line', "LineDesc","List", "Name","Part", "UM", "ItemDesc", "PO", "UM1", "Start", "Expire", 
-    "T", "Cur", "MinQty1", "Amt1", "MinQty2", "Amt2", "MinQty3", "Amt3", "MinQty4", "Amt4", "MinQty5", "Amt5",
-
-    "BaseCurr", "TotalCost", "Remarks"]
-    cost_map = pd.DataFrame(costdata, columns=cols).drop([f'MinQty{n}' for n in range(1,6)],axis=1)
-
-    # Filters
-    cost_map = cost_map[cost_map.UM1!= "--"]
-    cost_map = cost_map[cost_map.Amt1 != '']
-    cost_map = cost_map[cost_map.Part!='Item Number']
-
-    cost_map.Amt1 = cost_map.Amt1.astype(float)
-    cost_map.Part = cost_map.Part.replace('', np.nan).astype(str)
-    cost_map.Start = pd.to_datetime(cost_map.Start, format='%m/%d/%y')
-    cost_map = cost_map[['Part', 'Start', 'Amt1']]
-
-    cost_map = cost_map.loc[cost_map.groupby('Part')['Start'].idxmax()].reset_index(drop=True)
-    #cost_map = cost_map[['Part', 'Amt1']]
-
-    return cost_map
-
-
 def waterfallParse(file):
     # Files need to bbe read stupidly bc big
     all_parts = pd.DataFrame([])
@@ -190,15 +167,5 @@ def consumpParse(file,
         raise(ValueError("Please provide either a namepattern OR both year and week"))
     filedata = stateParse(file)
     df = pd.DataFrame(filedata, columns=cols)
-
-    df.columns = [c.strip() for c in df.columns]
-    df.rename({'Item Number': "Part"}, axis=1, inplace=True, errors='ignore')
-    df = df.loc[:, ['Part', 'Quantity1']]
-    # df.loc[:, ow] = int(week)
-    # df[pre['py']] = int(year)
-    df.Part = df.Part.replace('', np.nan)
-    df.dropna(subset=['Part'], inplace=True)
-    df[pre['oi']] = week_to_idx(int(year), int(week))
-    df.Quantity1 = df.Quantity1.str.replace(',','').astype(float).abs()
     # Aggregate 
     return df

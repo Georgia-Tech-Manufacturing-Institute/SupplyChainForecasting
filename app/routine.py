@@ -3,10 +3,13 @@ import shutil
 from glob import glob
 from datetime import datetime
 
-from app.prefixe import dirs, raw_dir
+from app.core.common import preformat_plant
+from app.prefixe import dirs, raw_dir, plant_key
 from app.core.loader import (
-    create_connection, consumption_to_sql, waterfall_to_sql, cost_to_sql,
+    create_connection, 
+    autoConsumption, autoWaterfall
 )
+
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
 from app.reporting.history_report import error_report
@@ -45,32 +48,33 @@ def select_best_config(plant, default=None):
     return best_config
 
 
-def main(f, plant_source, archive_folder):
+def runAutomation(plant, autodir, archive_dir, title=None):
+    plant = preformat_plant(plant)
+    archive_dir = raw_dir(plant, data_type)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
     report_dir = dirs['reports']
     # Get current ISO week and make a folder in
     iso_now = datetime.now().isocalendar()
     current_year = iso_now[0]
     current_week = iso_now[1]
+    # Create a folder for outputs
     output_dir = report_dir / f"{current_year}wk{current_week:02d}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Tracks each step's pass/fail outcome to logs/routine_runs/ for the
     # Run History page in the UI.
-    run = RunLogger(plant=plant_source)
+    run = RunLogger(plant=plant)
 
     try:
         # Create an error report that includes the last 13 weeks of consumption data
         with run.step('Generate error report'):
-            error_report(plant=plant_source,
-                         save_to_file=True, save_loc=output_dir,
+            # TODO fix time span?
+            error_report(plant=plant,
+                         save_to_file=True, 
+                         save_loc=output_dir,
                          )
-
-        # look at items in folder - read the newest item
-        # `f` mirrors the raw data layout (data/{plant}/{DataType}): one
-        # subfolder per data type, each holding new .prn files to load
-        incoming_dir = f
-        archive_dir = archive_folder
-        conn = create_connection(plant=plant_source.lower())
+        conn = create_connection(plant=plant.lower())
 
         loaded_types = []
         try:
@@ -78,56 +82,59 @@ def main(f, plant_source, archive_folder):
             # process consumption and or waterfall data from file if available
             for data_type in DATA_TYPES:
                 step_name = f'Load {data_type}'
-                src_dir = os.path.join(incoming_dir, data_type)
-                files = glob(os.path.join(src_dir, '*.txt'))
-                if len(files) == 0:
-                    run.skip(step_name, 'No new files found')
-                    continue
 
+                items_to_move = []
                 with run.step(step_name) as rec:
-                    dest_dir = raw_dir(plant_source, data_type)
-                    dest_dir.mkdir(parents=True, exist_ok=True)
-                    for filepath in files:
-                        shutil.copy(filepath, dest_dir / os.path.basename(filepath))
+                    # for filepath in files:
+                    #     shutil.copy(filepath, dest_dir / os.path.basename(filepath))
 
                     if data_type == 'Consumption':
-                        consumption_to_sql(conn, dest_dir)
+                        plant_file, _, _ = autoConsumption(conn, folder=autodir,
+                                        plant= plant)
                     elif data_type == 'Waterfall':
-                        waterfall_to_sql(conn, dest_dir)
-                    elif data_type == 'Cost':
-                        cost_to_sql(conn, dest_dir)
-
+                        plant_file, _  =  autoWaterfall(conn, folder=autodir,
+                                      plant = plant)
+                        #waterfall_to_sql(conn, dest_dir)
+                    # elif data_type == 'Cost':
+                    #     cost_to_sql(conn, dest_dir)
+                    else:
+                        print("Unknown data ")
                     # When files are read successfully, move the file to an archive folder
                     archive_dest = os.path.join(archive_dir, data_type)
                     os.makedirs(archive_dest, exist_ok=True)
-                    for filepath in files:
-                        shutil.move(filepath, os.path.join(archive_dest, os.path.basename(filepath)))
+                    
+                    if title:
+                        archive_name = title
+                    else:
+                        ctime = os.path.getctime(plant_file)
+                        dt = datetime.fromtimestamp(ctime)
+                        archive_name = f"{dt.isocalendar().year}wk{dt.isocalendar().week}"
+                    shutil.move(plant_file, os.path.join(archive_dest, archive_name))
 
-                    rec['message'] = f'{len(files)} file(s) loaded and archived'
+                    rec['message'] = f'{data_type} loaded and archived'
 
                 loaded_types.append(data_type)
-                print(f"Loaded and archived {len(files)} {data_type} file(s) for {plant_source}.")
         finally:
             conn.close()
 
         if not loaded_types:
-            msg = f"No new files found in {incoming_dir} for {plant_source}; skipping retrain/predict."
+            msg = f"No new files found in {autodir} for {plant}; skipping retrain/predict."
             print(msg)
             run.finish('no_new_data')
             return
 
         # Retrain the model with fresh data, leaving one week as holdout
-        conn = create_connection(plant=plant_source.lower())
+        conn = create_connection(plant=plant.lower())
         try:
             with run.step('Train model') as rec:
                 # After data is loaded, review past models and choose the best performing parameter set.
-                config = select_best_config(plant_source)
+                config = select_best_config(plant)
                 train_df = build_training_dataset(conn)
-                bundle = model_train(train_df, holdout_weeks=1, plant=plant_source, config=config)
+                bundle = model_train(train_df, holdout_weeks=1, plant=plant, config=config)
                 rec['message'] = f'{len(train_df):,} training rows'
 
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            model_name = f"{plant_source}_{current_year}wk{current_week:02d}_{ts}"
+            model_name = f"{plant}_{current_year}wk{current_week:02d}_{ts}"
             with run.step('Save model') as rec:
                 save_model(bundle, model_name)
                 rec['message'] = f'{model_name}.pkl'
@@ -152,13 +159,17 @@ def main(f, plant_source, archive_folder):
         raise
 
 
+def main():
+    for plant in plant_key.keys():
+        runAutomation(plant, autodir=)
+
 if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description="Weekly load / retrain / predict routine.")
     parser.add_argument('incoming_folder', help="Folder to check for new data files (with Consumption/Waterfall/Cost subfolders).")
-    parser.add_argument('plant_source', help="Plant source, e.g. Arlington or Hermasillo.")
+    parser.add_argument('plant', help="Plant source, e.g. Arlington or Hermasillo.")
     parser.add_argument('archive_folder', help="Folder to move processed files into.")
     args = parser.parse_args()
 
-    main(args.incoming_folder, args.plant_source, args.archive_folder)
+    main(args.incoming_folder, args.plant, args.archive_folder)

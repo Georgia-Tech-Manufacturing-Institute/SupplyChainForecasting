@@ -1,6 +1,40 @@
 {% extends "base.html" %}
 {% block title %}Home — Forecast Tool{% endblock %}
 
+{% block extra_head %}
+<style>
+  .plant-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .plant-table th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--surface-2, #f4f4f4);
+    border-bottom: 2px solid var(--border, #ddd);
+    font-weight: 600;
+    color: var(--text-muted, #555);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .plant-table th.num, .plant-table td.num { text-align: right; }
+  .plant-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border, #eee);
+    vertical-align: middle;
+  }
+  .plant-table tbody tr:last-child td { border-bottom: none; }
+  .plant-table tbody tr:hover td { background: var(--surface-hover, #fafafa); }
+  .plant-table td.plant-name { font-weight: 600; }
+  .plant-table td.no-db { color: var(--text-muted, #999); font-style: italic; }
+  /* In-flight weeks: real data, but not yet aggregated, so it is not visible
+     to models or reports. Muted so it doesn't read as a loaded-data count. */
+  .plant-table td.pending { color: var(--text-muted, #999); }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-title">
   <span class="icon">🏠</span>
@@ -81,6 +115,81 @@
     </div>
   </a>
 
+</div>
+
+<!-- ── Plant Sources ───────────────────────────── -->
+<div style="margin-top:48px; max-width:860px;">
+  <div class="page-title" style="font-size:18px; margin-bottom:16px;">
+    <span class="icon">🏭</span>
+    Plant Sources
+  </div>
+
+  <div class="card" style="overflow-x:auto; padding:0; margin-bottom:24px;">
+    <table class="plant-table">
+      <thead>
+        <tr>
+          <th>Plant</th>
+          <th class="num">Waterfall Wks</th>
+          <th class="num">Consumption Wks</th>
+          <th class="num" title="Partial weeks held in the consumption landing table, waiting on the rest of their transactions before they can be totalled.">Pending Wks</th>
+          <th class="num">Waterfall Parts</th>
+          <th class="num">Consumption Parts</th>
+          <th class="num">Parts w/ Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in plant_sources %}
+        {% set s = plant_stats.get(p) %}
+        <tr>
+          <td class="plant-name">{{ p }}</td>
+          {% if s %}
+          <td class="num">{{ s.weeks_waterfall }}</td>
+          <td class="num">{{ s.weeks_consumption }}</td>
+          <td class="num pending">{{ s.weeks_pending }}</td>
+          <td class="num">{{ s.parts_waterfall }}</td>
+          <td class="num">{{ s.parts_consumption }}</td>
+          <td class="num">{{ s.parts_with_cost }}</td>
+          {% else %}
+          <td colspan="6" class="no-db">No database found</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <form method="POST" action="{{ url_for('add_plant') }}">
+      <table class="form-table">
+        <thead>
+          <tr>
+            <th colspan="2">Register a new plant source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th class="row-label">Plant Name</th>
+            <td>
+              <input type="text" name="plant_name" class="form-select" placeholder="e.g. Saltillo" required>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="action-row">
+        <button type="submit" class="btn-run">Add Plant</button>
+
+        {% if plant_result %}
+          <span class="result-banner">✔ {{ plant_result }}</span>
+        {% elif plant_error %}
+          <span class="error-banner">✖ {{ plant_error }}</span>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  <div style="color:var(--text-muted); font-size:12px; margin-top:8px;">
+    Adding a plant creates its SQLite database with the standard schema, ready to load data into via the Load page.
+  </div>
 </div>
 
 <!-- ── Changelog ───────────────────────────────── -->
