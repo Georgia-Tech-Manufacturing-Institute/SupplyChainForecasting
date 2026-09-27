@@ -1,7 +1,7 @@
 
 Stores prior versions of the model. Metadata should include the span of dates and features that the model was trained with as well as performance statistics. 
 
-MOST IMPORTANT NOTE: This set of features has room to grow and expand with the data 
+MOST IMPORTANT NOTE: This set of features has room to grow and expand with the data. The BIGGEST concern when adding new features is ENSURING that future information is NOT included. The input to both model training and prediction is a row representing a future order date (orderidx), made on a date (predictidx). Each row should contain features (columns) ONLY based on information available up to the prediction date. Incorporating future information will often improve performance, but requires information that isn't actually available for real future projections! 
 
 # features.py
 
@@ -87,10 +87,8 @@ and every column below is added on top of the original frame:
   running average prediction (`predqty / (predqty_mean_qty + 1)`).
 - `predqty_vs_max_ratio` — current prediction relative to this part's
   highest prediction ever (`predqty / (predqty_max_qty + 1)`).
-- `orderidx_woy` — week of year for the order week (`orderidx % 52`).
-- `orderidx_quarter` — fiscal quarter for the order week (`orderidx_woy // 13`).
-- `predidx_woy` — week of year for the prediction week (`predidx % 52`).
-- `predidx_quarter` — fiscal quarter for the prediction week (`predidx_woy // 13`).
+- `_woy` — week of year for the week (e.g. `orderidx % 52`).
+- `_quarter` — fiscal quarter for the week (e.g. `orderidx_woy // 13`).
 
 `waterfall_features` accepts a `progress_cb(step, total, message)` callback
 that gets invoked during the walk-forward loop underlying `demand_share`/
@@ -178,3 +176,15 @@ starter-character indicator plus a truncated/reassembled core before splitting i
 
 - `pn0` … `pn7` — one integer-coded column per identifier character position (8 positions by default), `int8`, missing values filled as 0.
 - One additional `int8` (0/1) dummy column per distinct "starter" character seen among abnormally long IDs.
+
+# feature engineering; warnings!
+
+feature engineering is a tantalizing method of model improvement. However, there are a lot of pitfalls within this dataset in particular. 
+- Seeing into the future: This is time series 101, but just to be abundantly clear: features should NEVER learn into not available at the time of row creation. This is tricky when it comes to these datasets, because when the consumption and prediction is merged, you can accidentally look into the future if you're not careful.
+  - for example: if data is sorted according to orderidx rather than predidx, then a "prior" row might be already ordered, giving unrealistic insight
+- Lag != prior week. this is one i have to catch myself doing; because the customer demand is not always present for every week, sometimes the "last" value is from many weeks ago. At the time of the last week, the lagging value IS the last known prediction, but it was not forecast in the prior week. 
+
+
+
+## Future work
+- Exogenous features: holidays, company stock 

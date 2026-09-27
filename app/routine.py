@@ -79,7 +79,7 @@ def main(f, plant_source, archive_folder):
             for data_type in DATA_TYPES:
                 step_name = f'Load {data_type}'
                 src_dir = os.path.join(incoming_dir, data_type)
-                files = glob(os.path.join(src_dir, '*.prn'))
+                files = glob(os.path.join(src_dir, '*.txt'))
                 if len(files) == 0:
                     run.skip(step_name, 'No new files found')
                     continue
