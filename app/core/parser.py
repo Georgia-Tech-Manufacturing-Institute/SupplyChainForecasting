@@ -1,7 +1,11 @@
 import os
 import re
 from app.core.processor import *
+import datetime
+from app.prefixe import plant_key, pre
+from app.core.common import *
 waterfall_header = ['Week#', 'RelDate', 'SO', 'Ln', 'ShipTo', 'CustomerPart', 'Part', 'PCR']
+
 
 pre = {
     'pp': 'pred',
@@ -22,8 +26,14 @@ pre.update({
     'pq': pre['pp'] + pre['qs'],
     'oq': pre['op'] + pre['qs'],
 })
+date_format = "%m/%d/%y"
+
+
 def idx_to_week(v):
     return (v // 52, v % 52)
+
+def preformat_plant(s):
+    return s.strip().lower()
 
 def week_to_idx(year, week):
     return int(year) * 52 + int(week)
@@ -38,9 +48,13 @@ def cast_to_into(series, to_int=True):
 
 # ============ PARSE WATERFALL FILES ============ 
 
-def autoWaterfiler(folder):
+
+def custDemandParse(plant, folder):
+    # plant 
+    plant = preformat_plant(plant)
     # folder; posixpath 
-    df = pd.read_csv(folder / 'AT_custdemand.txt', sep='|')
+    df = pd.read_csv(folder / f'{plant_key[plant]}_custdemand.txt', 
+                     sep='|')
     df.columns = [col.replace(' ', '') for col in df.columns]
 
     dates = [col for col in df.columns if '/' in col]
@@ -54,90 +68,16 @@ def autoWaterfiler(folder):
         )
         .dropna(subset=[pre['pq']])
     )
-    all_parts.OrderDate = pd.to_datetime(all_parts.OrderDate, format="%m/%d/%y")
+    all_parts.OrderDate = pd.to_datetime(all_parts.OrderDate, format=date_format)
     all_parts.RelDate = pd.to_datetime(all_parts.RelDate, format = "%m/%d/%y")
-    all_parts["Lookahead"] = all_parts.OrderDate - all_parts.RelDate
-    # Eliminate cases where ReleaseDate/OrderDate/Qty triples are for the "past" 
-    # NB: We use when lookahead is less than 2 weeks as some cases include the 
-    all_parts = all_parts[all_parts.Lookahead.dt.days > -14]
-    return all_parts
-
-def readWaterfallGroup(f):
-    dates = []
-    partGroup = True # Group all sharing a single PN
-    line = ''
-    group_text = []
-    while partGroup:
-        if 'Week#' in line:
-            _, datestr = line.rsplit('PCR')
-            dates = datestr[1:-1].split(' ')
-            partGroup = False
-        else:
-            line = f.readline()
-            if not line:
-                break
-            group_text.append(line)
-    active_data = True
-    group_data = []
-    ruler = f.readline() # Fixed field delimiters
-    if not line:
-        return None, None
-    widths = [len(group) for group in ruler.split()]
-    
-    while active_data:
-        line = f.readline()
-        if not line:
-            break
-        if line == '\n' or '+' in line:
-            active_data = False
-        else:
-            group_data.append(parse_fixed_width(line, widths))
-    df = pd.DataFrame(group_data, columns=waterfall_header + dates)
-    return df.replace('', np.nan), dates
-
-def waterfallParse(file):
-    # Files need to bbe read stupidly bc big
-    all_parts = pd.DataFrame([])
-    with open(file) as f:
-        while True:
-            df, dates  = readWaterfallGroup(f)
-            if (df is not None) and (len(df) > 0):
-    
-                melted = df.melt(id_vars=waterfall_header, 
-                                value_vars=dates, 
-                                var_name='OrderDate', 
-                                value_name=pre['pq']).dropna(subset=[pre['pq']],
-                                                                        axis=0)
-                all_parts = pd.concat([all_parts, melted], ignore_index=True, axis=0)
-            else:
-                break
-    all_parts.OrderDate = pd.to_datetime(all_parts.OrderDate, format="%m/%d/%y")
-    all_parts.RelDate = pd.to_datetime(all_parts.RelDate, format = "%m/%d/%y")
-    all_parts["Lookahead"] = all_parts.OrderDate - all_parts.RelDate
-    # Eliminate cases where ReleaseDate/OrderDate/Qty triples are for the "past" 
-    # NB: We use when lookahead is less than 2 weeks as some cases include the 
-    all_parts = all_parts[all_parts.Lookahead.dt.days > -14]
-    return all_parts
-    #all_parts.to_csv(out, sep="|", mode='a', index=False, header=first)
-
-def custDemandParse(folder):
-    df = pd.read_csv(folder / 'AT_custdemand.txt', sep='|')
-    df.columns = [col.replace(' ', '') for col in df.columns]
-    dates = [col for col in df.columns if '/' in col]
-    melted = (
-        df.melt(
-            id_vars=waterfall_header,
-            value_vars=dates,
-            var_name='OrderDate',
-            value_name=pre['pq']
-        )
-        .dropna(subset=[pre['pq']])
-    )
-    return waterfallProcess(melted)
+    return waterfallProcess(all_parts)
 
 def waterfallProcess(wf):
     # Takes output of waterfallParse; makes it more beautiful. 
     wf_df = wf.copy()
+    wf_df["Lookahead"] = wf_df.OrderDate - wf_df.RelDate
+    # Eliminate cases where ReleaseDate/OrderDate/Qty triples are for the "past" 
+    wf_df = wf_df[wf_df.Lookahead.dt.days > -14]
     wf_df.OrderDate = pd.to_datetime(wf_df.OrderDate, format="%m/%d/%y")
     wf_df.RelDate = pd.to_datetime(wf_df.RelDate, format="%m/%d/%y")
     wf_df[pre['ow']] = wf_df.OrderDate.dt.isocalendar().week
@@ -152,13 +92,36 @@ def waterfallProcess(wf):
     wf_df.drop(['CustomerPart', 'SO', 'Ln',
                 "Week#","OrderDate", "Lookahead"], axis=1, inplace=True, errors='ignore')
     wf_df = wf_df.drop_duplicates(keep='first')
+
     wf_df.Part = wf_df.Part.astype(str)
     if wf_df.PCR.dtype == str:
         wf_df.PCR = cast_to_into(wf.PCR)
     if wf_df[pre['pq']].dtype == str:
         wf_df[pre['pq']] = cast_to_into(wf[pre['pq']])
-
     return wf_df
+
+def process_ictrans(folder, plant):
+    oq = pre['oq']
+    part_id = 'Item Number'
+    consump = pd.read_csv(folder / f'{plant_key[plant]}_ictrans.txt', sep='|')
+    consump = consump[consump['Trans Type'] == 'ISS-SO']
+    consump = consump.rename({part_id: 'part', 
+                              'Trans Date': 'orderdate', 
+                              'Trans Qty': oq}, axis=1)
+    part_id = 'part'
+    consump = consump.loc[:, [part_id, 'Trans Number', 'orderdate', oq]]
+    consump[part_id] = consump[part_id].str.strip()
+    consump = consump[(~consump[part_id].str.contains(' '))
+                      &(consump[part_id].str.len() >= 8)]
+    
+    consump['orderdate'] = consump['orderdate'].apply(lambda f: datetime.strptime(f, '%m/%d/%y'))
+    consump[oq] = consump[oq].abs().astype(int)
+    consump['week'] = pd.to_datetime(consump['orderdate']).apply(lambda x: x.week)
+    #consump[oi] = consump['orderdate'].apply(lambda x: week_to_idx(x.year, x.week))
+   #consump = consump.drop('orderdate', axis=1)
+
+    return consump
+
 
 
 def filter_partno(df, col='Part'):
@@ -174,28 +137,7 @@ def filter_partno(df, col='Part'):
     
     return df_filtered
 
-def consumpParse(file, 
-                 cols =["Site", "Part", "Description", "UM","Type", 
-                        "Type1", "Quantity1", "Type2", "Quantity2"],
-                year=None, week=None):
-    filename = os.path.basename(file)
-    # match determines what week of the year
-    if not year or not week:
-        raise(ValueError("Please provide either a namepattern OR both year and week"))
-    filedata = stateParse(file)
-    df = pd.DataFrame(filedata, columns=cols)
 
-    df.columns = [c.strip() for c in df.columns]
-    df.rename({'Item Number': "Part"}, axis=1, inplace=True, errors='ignore')
-    df = df.loc[:, ['Part', 'Quantity1']]
-    # df.loc[:, ow] = int(week)
-    # df[pre['py']] = int(year)
-    df.Part = df.Part.replace('', np.nan)
-    df.dropna(subset=['Part'], inplace=True)
-    df[pre['oi']] = week_to_idx(int(year), int(week))
-    df.Quantity1 = df.Quantity1.str.replace(',','').astype(float).abs()
-    # Aggregate 
-    return df
 
 def costPrep(cost_file):
     costdata = stateParse(cost_file)

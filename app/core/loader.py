@@ -99,7 +99,6 @@ def filter_disjoint(wf, consumption):
     consumption = consumption[~consumption.Part.isin(disjoint)].reset_index(drop=True)
     return wf, consumption
 
-
 def consumption_to_sql(conn, consump_dir, overwrite=False):
     # Todo check for file duplication based on loaded_files table
     consump_dir = Path(consump_dir)
@@ -113,25 +112,24 @@ def consumption_to_sql(conn, consump_dir, overwrite=False):
             print("     Skipping ", filename, " identical copy processed; suppress this behavior by setting overwrite=True")
             if not overwrite:
                 continue
-        # Suppress prior year/week logic; 
-        # try:
-        #     year, week = parse_file_convention(filename)
-        # except ValueError as e:
-        #     print("     Skipping ", filename)
-        #     print("          ", e)
-        #     continue
-        # idx = week_to_idx(year, week)
-        # if idx in list(loaded.week_idx):
-        #     print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
-        #     continue        
+        try:
+            year, week = parse_file_convention(filename)
+        except ValueError as e:
+            print("     Skipping ", filename)
+            print("          ", e)
+            continue
+        idx = week_to_idx(year, week)
+        if idx in list(loaded.week_idx):
+            print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
+            continue        
         
         input_path = consump_dir / filename
-        # yr, wk = parse_file_convention(filename)
-        # test = consumpParse(input_path, year=yr, week=wk,
-        #                     cols= ["Site", "Item Number", "Description", "UM",
-        #                             "Type", "Type1", "Quantity1", "Type2", "Quantity2"])
-        # print("     Processing: ", filename, f' as Yr{yr}Wk{wk}')
-        # filt = filter_partno(test, col='Part')
+        yr, wk = parse_file_convention(filename)
+        test = consumpParse(input_path, year=yr, week=wk,
+                            cols= ["Site", "Item Number", "Description", "UM",
+                                    "Type", "Type1", "Quantity1", "Type2", "Quantity2"])
+        print("     Processing: ", filename, f' as Yr{yr}Wk{wk}')
+        filt = filter_partno(test, col='Part')
         if len(filt)>0:
             filt = filt.groupby(['Part', pre['oi']]).sum(numeric_only=True).reset_index()
             filt = filt.rename({'Quantity1': pre['oq']}, axis=1    )
@@ -145,6 +143,26 @@ def get_loaded_files(conn, filter_type=None):
     if filter_type:
         loaded = loaded[loaded['data_type']==filter_type]
     return loaded
+
+def wf_agg(conn, wf):
+    wf["RelDate"] = wf["RelDate"].astype(str)
+    d_rows = load_to_sql(conn, 'waterfall', 
+                            wf.rename({pre['pq']: 'qty'}, axis=1))
+    d_rows 
+    print(f"          Changed {d_rows} rows in waterfall")
+    wf_agg = wf.groupby(['Part', pre['oi'], pre['pi']], 
+                        as_index=True).agg({pre['pq']: 'sum',
+                                            'PCR':'sum'}).reset_index()
+    widx = d_rows[pi].max()
+    update_loaded_files(conn, filename, 'waterfall', widx)
+    d_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
+    return d_rows
+
+def custDemand_to_sql(conn, datadir):
+    demand = custDemandParse(datadir)
+    d_rows = wf_agg(conn, demand)
+    print(f"          Changed {d_rows} rows in waterfall_agg")
+
 
 def waterfall_to_sql(conn, waterfall_dir, overwrite=False):
     '''
@@ -179,16 +197,7 @@ def waterfall_to_sql(conn, waterfall_dir, overwrite=False):
         print("     Parsing ", filename)
         parsed = waterfallParse(input_path)
         wf = waterfallProcess(parsed)
-        wf["RelDate"] = wf["RelDate"].astype(str)
-        d_rows = load_to_sql(conn, 'waterfall', 
-                                wf.rename({pre['pq']: 'qty'}, axis=1))
-        print(f"          Changed {d_rows} rows in waterfall")
-        wf_agg = wf.groupby(['Part', pre['oi'], pre['pi']], 
-                            as_index=True).agg({pre['pq']: 'sum',
-                                                'PCR':'sum'}).reset_index()
-        widx = week_to_idx(year, week)
-        update_loaded_files(conn, filename, 'waterfall', widx)
-        d_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
+        d_rows = wf_agg(conn, wf)
         print(f"          Changed {d_rows} rows in waterfall_agg")
 
 def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
