@@ -31,21 +31,11 @@ plant_key = {'alma': '485',
              'warren': '493', 
              'windsor': 'KD'}
 
-_BASE_PLANT_SOURCES = ['Arlington', 'Hermasillo']
+_BASE_PLANT_SOURCES = ['Arlington', 
+                       'Hermasillo',
+                       'Cottondale',
+                       ]
 
-# User-added plants (via the UI) are persisted here so they survive restarts,
-# since _BASE_PLANT_SOURCES above is hardcoded.
-_CUSTOM_PLANTS_FILE = dirs['data'] / 'custom_plants.json'
-
-
-def _load_custom_plants() -> list[str]:
-    if not _CUSTOM_PLANTS_FILE.exists():
-        return []
-    try:
-        with open(_CUSTOM_PLANTS_FILE) as fh:
-            return json.load(fh)
-    except (json.JSONDecodeError, OSError):
-        return []
 
 
 def add_plant(plant: str) -> None:
@@ -59,15 +49,11 @@ def add_plant(plant: str) -> None:
         raise ValueError(f"Plant '{plant}' already exists.")
 
     dirs['data'].mkdir(parents=True, exist_ok=True)
-    custom = _load_custom_plants()
-    custom.append(plant)
-    with open(_CUSTOM_PLANTS_FILE, 'w') as fh:
-        json.dump(custom, fh, indent=2)
 
-    PLANT_SOURCES = _BASE_PLANT_SOURCES + custom
+    PLANT_SOURCES = _BASE_PLANT_SOURCES 
 
 
-PLANT_SOURCES = _BASE_PLANT_SOURCES + _load_custom_plants()
+PLANT_SOURCES = _BASE_PLANT_SOURCES 
 
 
 

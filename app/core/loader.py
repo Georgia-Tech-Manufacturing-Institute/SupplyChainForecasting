@@ -9,11 +9,6 @@ import sqlite3
 
 LOADED_FILE_TYPES = {'waterfall', 'consumption', 'cost'}
 
-# Tail of the pipe-delimited extract each data type arrives in. Matched on the
-# suffix alone so the plant's key prefix (AT_, CU3_, 485_, ...) does not matter.
-EXTRACT_SUFFIX = {'consumption': '_ictrans.txt',
-                  'waterfall':   '_custdemand.txt'}
-
 oi = pre['oi']
 pi = pre['pi']
 
@@ -47,24 +42,42 @@ def resolve_sources(source):
     raise FileNotFoundError(f"No such file or directory: {source}")
 
 
-def classify_source(path, data_type):
+def classify_source(path, data_type, plant=None):
     '''
     Which of the two accepted shapes `path` is:
 
-      'extract' -- the pipe-delimited {key}_ictrans/_custdemand extract, which
-                   carries its own dates and can span many weeks.
+      'extract' -- the pipe-delimited {plant_key}_ictrans/_custdemand extract,
+                   which carries its own dates and can span many weeks. It is
+                   named for one plant, so when that plant's key is known the
+                   prefix has to match it; otherwise one plant's extract could
+                   quietly land in another plant's database.
       'weekly'  -- a legacy YYYYwkWW report, one week per file, the week taken
                    from the filename.
       None      -- the name matches neither and the caller should skip it.
     '''
     name = Path(path).name.lower()
-    if name.endswith(EXTRACT_SUFFIX[data_type]):
+    key = plant_extract_key(plant) if plant is not None else None
+    if key is not None:
+        if name == f'{key}{EXTRACT_SUFFIX[data_type]}'.lower():
+            return 'extract'
+    # No key configured for this plant, so there is nothing to match the prefix
+    # against; accept any extract carrying the right suffix.
+    elif name.endswith(EXTRACT_SUFFIX[data_type]):
         return 'extract'
     try:
         parse_file_convention(name)
     except ValueError:
         return None
     return 'weekly'
+
+
+def describe_expected(data_type, plant):
+    '''The filename shapes a load accepts, for skip/error messages.'''
+    try:
+        extract = extract_filename(data_type, plant)
+    except KeyError:
+        extract = f'*{EXTRACT_SUFFIX[data_type]}'
+    return f'{extract} or the YYYYwkWW convention'
 
 
 def closed_weeks(conn, data_type):
@@ -83,55 +96,62 @@ def filter_disjoint(wf, consumption):
     consumption = consumption[~consumption.Part.isin(disjoint)].reset_index(drop=True)
     return wf, consumption
 
-def land_waterfall(conn, wf, source_filename, overwrite=False):
-    '''
-    Folds already-parsed waterfall rows into the waterfall tables, skipping
-    prediction weeks that loaded_files already records.
+def already_loaded(conn, filename, data_type):
+    '''Whether a file of this exact name is already recorded in loaded_files.'''
+    loaded = get_loaded_files(conn, filter_type=data_type)
+    return filename in set(loaded.filename)
 
-    Re-loading is harmless either way -- both waterfall tables are keyed
-    UNIQUE and inserted with OR IGNORE -- so the skip is there to save work,
-    and overwrite=True turns it off.
+
+def land_waterfall(conn, wf, source_filename):
+    '''
+    Folds already-parsed waterfall rows into the waterfall tables.
+
+    Rows a previous report already carried are dropped by the database rather
+    than filtered here: both waterfall tables are keyed UNIQUE and inserted
+    with OR IGNORE, and two reports legitimately overlap on release weeks, so
+    filtering by week would throw away whatever the newer report adds.
 
     Returns the number of rows written to waterfall_agg.
     '''
     if len(wf) == 0:
         print("     No demand found")
         return 0
-
-    closed = closed_weeks(conn, 'waterfall')
-    if closed and not overwrite:
-        already = wf[wf[pi].isin(closed)]
-        if len(already) > 0:
-            weeks = sorted(already[pi].unique())
-            print(f"     Skipping {len(already)} rows from {len(weeks)} already-loaded "
-                  f"prediction week(s) {weeks[0]}-{weeks[-1]}; suppress with overwrite=True")
-            wf = wf[~wf[pi].isin(closed)]
-
-    if len(wf) == 0:
-        print("     Nothing new to load")
-        return 0
     return aggregate_waterfall(conn, wf, source_filename)
 
 
-def load_custdemand(conn, file, overwrite=False):
-    '''Loads one pipe-delimited customer-demand extract. Shared by the weekly
-    routine (autoWaterfall) and the one-off loader (waterfall_to_sql).'''
+def load_custdemand(conn, file):
+    '''
+    Loads one pipe-delimited customer-demand extract. Shared by the weekly
+    routine (autoWaterfall) and the one-off loader (waterfall_to_sql).
+
+    The extract carries the same name every week, so there is nothing in the
+    name to skip on -- it is always re-read, and the UNIQUE keys absorb the
+    overlap with last week's.
+    '''
     file = Path(file)
     print(f"Waterfall ingest: {file.name}")
-    return land_waterfall(conn, custDemandParse(file=file), file.name, overwrite)
+    return land_waterfall(conn, custDemandParse(file=file), file.name)
 
 
 def load_waterfall_prn(conn, file, overwrite=False):
-    '''Loads one legacy diamond report (2026wk09.prn) into the waterfall
-    tables. The report carries its own release dates, so unlike the legacy
-    consumption report the week is read from the rows, not the filename.'''
+    '''
+    Loads one legacy diamond report (2026wk09.prn) into the waterfall tables.
+    The report carries its own release dates, so unlike the legacy consumption
+    report the weeks are read from the rows, not the filename.
+
+    Here the filename does identify the contents, so a file already recorded
+    in loaded_files is skipped unless overwrite=True.
+    '''
     file = Path(file)
+    if not overwrite and already_loaded(conn, file.name, 'waterfall'):
+        print(f"     Skipping {file.name}; already loaded; suppress this "
+              "behavior by setting overwrite=True")
+        return 0
     print(f"     Parsing {file.name}")
-    wf = waterfallProcess(waterfallParse(file))
-    return land_waterfall(conn, wf, file.name, overwrite)
+    return land_waterfall(conn, waterfallProcess(waterfallParse(file)), file.name)
 
 
-def autoWaterfall(conn, folder, plant, overwrite=False):
+def autoWaterfall(conn, folder, plant):
     '''
     Weekly ingest of the raw customer-demand extract: parses
     {plant}_custdemand.txt out of `folder` and lands it in waterfall /
@@ -145,7 +165,7 @@ def autoWaterfall(conn, folder, plant, overwrite=False):
     if not (folder / plant_file).exists():
         print(f"     Skipping waterfall; no {plant_file} in {folder}")
         return None, 0
-    return plant_file, load_custdemand(conn, folder / plant_file, overwrite)
+    return plant_file, load_custdemand(conn, folder / plant_file)
 
 
 def load_ictrans(conn, file, overwrite=False):
@@ -251,45 +271,58 @@ def aggregate_consumption(conn, source_filename):
     print(f"     Aggregated {len(weeks)} complete week(s): {weeks}")
     return weeks
 
-def consumption_to_sql(conn, consump_dir, plant, overwrite=False):
+def consumption_to_sql(conn, source, plant='arlington', overwrite=False):
     '''
-    Legacy loader for the pre-aggregated weekly .prn reports (2025wk06.prn).
-    These files are already one row per part per week, so they bypass the
-    landing table and go straight into consumption_agg.
+    One-off consumption load, for a single file or a whole directory.
+
+    `source` may point at either shape, and a directory may mix them:
+
+      * {key}_ictrans.txt -- the transaction-level extract. Goes through the
+        landing table exactly as the weekly routine does, so a week is only
+        totalled once all seven of its days are present.
+      * YYYYwkWW.prn -- the legacy pre-aggregated weekly report. Already one
+        row per part per week, so it bypasses the landing table and goes
+        straight into consumption_agg, with its week read from the filename.
+
+    Returns the list of filenames that were loaded.
     '''
-    consump_dir = Path(consump_dir)
-    loaded = get_loaded_files(conn, filter_type='consumption')
+    done = []
+    closed = closed_weeks(conn, 'consumption')
 
-    try: 
-        raw = process_ictrans(consump_dir, preformat_plant(plant))
-    except: 
-        error
+    for path in resolve_sources(source):
+        shape = classify_source(path, 'consumption', plant)
+        if shape is None:
+            print(f"     Skipping {path.name}; expected "
+                  f"{describe_expected('consumption', plant)}")
+            continue
 
-    idx = week_to_idx(year, week)
-    if idx in list(loaded.week_idx):
-        print(f"     Skipping {filename}; waterfall for {year}W{week} exists already; suppress this behavior by setting overwrite=True")
-        continue        
-    
-    input_path = consump_dir / filename
-    yr, wk = parse_file_convention(filename)
-    test = consumpParse(input_path, year=yr, week=wk,
-                        cols= ["Site", "Item Number", "Description", "UM",
-                                "Type", "Type1", "Quantity1", "Type2", "Quantity2"])
-    print("     Processing: ", filename, f' as Yr{yr}Wk{wk}')
-    # consumpParse hands back the raw report columns; name the part column
-    # and derive the week index from the filename before filtering.
-    test = test.rename({'Item Number': 'Part'}, axis=1)
-    test = test[test['Quantity1'].astype(str).str.strip() != '']
-    filt = filter_partno(test, col='Part')
-    if len(filt)>0:
-        filt = filt.copy()
-        filt[pre['oq']] = cast_to_into(filt['Quantity1']).abs()
-        filt[pre['oi']] = idx
-        filt = filt.groupby(['Part', pre['oi']], as_index=False)[pre['oq']].sum()
-        d_rows = load_to_sql(conn, 'consumption_agg', filt)
-        print(f"          Changed {d_rows} rows")
-        update_loaded_files(conn, filename, 'consumption', idx)
+        if shape == 'extract':
+            _, aggregated = load_ictrans(conn, path, overwrite)
+            closed.update(aggregated)
+            done.append(path.name)
+            continue
+        else:
+            yr, wk = parse_file_convention(path.name)
+            idx = week_to_idx(yr, wk)
+            if idx in closed and not overwrite:
+                print(f"     Skipping {path.name}; consumption for {yr}W{wk} exists "
+                    "already; suppress this behavior by setting overwrite=True")
+                continue
+            agg = process_consumption_prn(path, yr, wk)
+        print(f"     Processing: {path.name} as Yr{yr}Wk{wk}")
+        
+        if len(agg) == 0:
+            print("     No usable part rows found")
+            continue
+
+        d_rows = load_to_sql(conn, 'consumption_agg', agg)
+        print(f"          Changed {d_rows} rows in consumption_agg")
+        update_loaded_files(conn, path.name, 'consumption', idx)
         conn.commit()
+        closed.add(idx)
+        done.append(path.name)
+
+    return done
 
 def get_loaded_files(conn, filter_type=None):
     loaded = filter_SQL(conn, table='loaded_files')
@@ -298,39 +331,69 @@ def get_loaded_files(conn, filter_type=None):
     return loaded
 
 def aggregate_waterfall(conn, wf, source_filename=None):
-    wf["RelDate"] = wf["RelDate"].astype(str)
-    d_rows = load_to_sql(conn, 'waterfall', wf)
+    '''
+    Writes parsed waterfall rows to `waterfall`, then their per
+    (part, orderidx, predidx) totals to `waterfall_agg`.
+
+    Every prediction week present is recorded in loaded_files, so a later
+    extract covering the same release weeks can skip them.
+
+    Returns the number of rows written to waterfall_agg.
+    '''
+    wf = wf.copy()
+    wf['reldate'] = wf['reldate'].astype(str)
+    d_rows = load_to_sql(conn, 'waterfall',
+                         wf.rename({pre['pq']: 'qty'}, axis=1))
     print(f"          Changed {d_rows} rows in waterfall")
+
     wf_agg = wf.groupby(['part', pre['oi'], pre['pi']],
-                        as_index=True).agg({pre['pq']: 'sum',
-                                            'PCR':'sum'}).reset_index()
+                        as_index=False).agg({pre['pq']: 'sum',
+                                            'pcr': 'sum'})
+    a_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
+    print(f"          Changed {a_rows} rows in waterfall_agg")
+
     if source_filename is not None:
-        widx = int(wf[pi].max())
-        update_loaded_files(conn, source_filename, 'waterfall', widx)
-    d_rows = load_to_sql(conn, 'waterfall_agg', wf_agg)
+        for widx in sorted(wf[pi].unique()):
+            update_loaded_files(conn, source_filename, 'waterfall', int(widx))
     conn.commit()
-    return d_rows
+    return a_rows
 
 def custDemand_to_sql(conn, plant, datadir):
-    demand = custDemandParse(plant, datadir)
-    d_rows = aggregate_waterfall(conn, demand,
-                    source_filename=f'{plant_key[preformat_plant(plant)]}_custdemand.txt')
-    print(f"          Changed {d_rows} rows in waterfall_agg")
+    '''Loads the customer-demand extract for `plant` out of `datadir`.
+    Thin alias kept for callers that name the plant rather than the file.'''
+    return load_custdemand(conn, Path(datadir) / custDemand_filename(plant))
 
 
-def waterfall_to_sql(conn, filename, overwrite=False):
+def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
     '''
-    Loads raw waterfall data into processed table; naming convention 2025wk06
-    skips rows that are not unique
-    Todo check for file duplication based on loaded_files table
+    One-off waterfall load, for a single file or a whole directory.
+
+    `source` may point at either shape, and a directory may mix them:
+
+      * {key}_custdemand.txt -- the pipe-delimited customer-demand extract,
+        which carries release dates for several weeks at once.
+      * YYYYwkWW.prn -- a legacy diamond report. Its rows carry their own
+        release dates too, so the filename only identifies the file.
+
+    Returns the list of filenames that were loaded.
     '''
     print("Bulk waterfall processing: ")
-    # Pull the 
-    loaded = get_loaded_files(conn, filter_type='waterfall')
-    wf = custDemandParse(file=filename)
-    wf["RelDate"] = wf["RelDate"].astype(str)
-    d_rows = load_to_sql(conn, 'waterfall', wf.rename({pre['pq']: 'qty'}, axis=1))
-    return d_rows
+    done = []
+
+    for path in resolve_sources(source):
+        shape = classify_source(path, 'waterfall', plant)
+        if shape is None:
+            print(f"     Skipping {path.name}; expected "
+                  f"{describe_expected('waterfall', plant)}")
+            continue
+
+        if shape == 'extract':
+            load_custdemand(conn, path)
+        else:
+            load_waterfall_prn(conn, path, overwrite)
+        done.append(path.name)
+
+    return done
 
 def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
     ''' keeps log of week info for loaded files
@@ -348,13 +411,25 @@ def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
     conn.commit()
 
 
-def cost_to_sql(conn, cost_dir):
-    if cost_dir.exists():
-        cost_map = costPrep(cost_dir)
-        cost_map = cost_map.rename({'Amt1':'Amount'}, axis=1)
+def cost_to_sql(conn, source):
+    '''
+    Loads price lists from a single file or a directory of them.
+
+    Cost files are standalone lists rather than weekly reports -- costPrep
+    already keeps only the latest Start per part -- so there is no week to
+    record in loaded_files and no naming convention to satisfy.
+    '''
+    rows = 0
+    for path in resolve_sources(source):
+        cost_map = costPrep(path)
+        cost_map = cost_map.rename({'Amt1': 'Amount'}, axis=1)
         cost_map.Start = cost_map.Start.astype(str)
-        load_to_sql(conn, 'cost', cost_map)
-    
+        rows += load_to_sql(conn, 'cost', cost_map)
+        print(f"     Loaded {path.name}")
+    print(f"          Changed {rows} rows in cost")
+    return rows
+
+
 
 def load_to_sql(conn, table, df):
     cur = conn.cursor()
@@ -568,15 +643,33 @@ def augment_waterfall(wf, min_part_lookahead_to_pad=4, lookahead_padding=4):
     return aug
 
 def main(plant='Arlington'):
+    '''Loads everything sitting in this plant's raw folders. The one-off
+    loaders take both the transaction extracts and the legacy .prn reports,
+    so each folder only needs one pass.'''
     conn = create_connection(plant)
-    waterfall_to_sql(conn, waterfall_dir=raw_dir(plant, 'Waterfall'))
-    # New transaction-level extract, then the legacy pre-aggregated .prn files.
-    autoConsumption(conn, raw_dir(plant, 'Consumption'), plant)
-    consumption_to_sql(conn, consump_dir=raw_dir(plant, 'Consumption'))
-    cost_to_sql(conn, cost_dir=raw_dir(plant, 'Cost'))
-    list_all_tables_row_totals(conn)
-    conn.close()
+    try:
+        for data_type, loader in (('Waterfall', waterfall_to_sql),
+                                  ('Consumption', consumption_to_sql)):
+            folder = raw_dir(plant, data_type)
+            if folder.is_dir():
+                loader(conn, folder, plant)
+            else:
+                print(f"     Skipping {data_type}; no {folder}")
+
+        cost_folder = raw_dir(plant, 'Cost')
+        if cost_folder.is_dir():
+            cost_to_sql(conn, cost_folder)
+
+        list_all_tables_row_totals(conn)
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Load every raw file already sitting in a plant's data folders.")
+    parser.add_argument('plant', nargs='?', default='Arlington',
+                        help="Plant source, e.g. Arlington or Hermasillo.")
+    main(parser.parse_args().plant)
