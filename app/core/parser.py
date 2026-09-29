@@ -33,9 +33,53 @@ date_format = "%m/%d/%y"
 # ============ PARSE WATERFALL FILES ============ 
 
 
+# Tail of the pipe-delimited extract each data type arrives in, after the
+# plant's source-system key (AT_, CU3_, 485_, ...).
+EXTRACT_SUFFIX = {'consumption': '_ictrans.txt',
+                  'waterfall':   '_custdemand.txt'}
+
+
+def plant_extract_key(plant):
+    '''The source-system key prefixing this plant's extract files, or None when
+    the plant has no plant_key entry -- a plant added through the UI, or one
+    whose spelling differs from prefixe.plant_key.'''
+    return plant_key.get(preformat_plant(plant))
+
+
+def extract_filename(data_type, plant):
+    '''Conventional name of the pipe-delimited extract, e.g. AT_ictrans.txt.'''
+    key = plant_extract_key(plant)
+    if key is None:
+        raise KeyError(f"No plant_key entry for {plant!r}; add one in "
+                       f"app/prefixe.py to name its {data_type} extract")
+    return f'{key}{EXTRACT_SUFFIX[data_type]}'
+
+
 def custDemand_filename(plant):
     '''Name of the pipe-delimited customer-demand extract for `plant`.'''
-    return f'{plant_key[preformat_plant(plant)]}_custdemand.txt'
+    return extract_filename('waterfall', plant)
+
+
+# Columns the waterfall tables keep; everything else the reports carry
+# (order/line numbers, customer part, the report's own week counter) is dropped.
+WATERFALL_KEEP = ['part', 'reldate', 'shipto', 'pcr',
+                  pre['pq'], pre['pi'], pre['oi']]
+
+
+def normalize_columns(df):
+    '''Lowercases and de-spaces column labels so the legacy .prn reports
+    (Week#/RelDate/ShipTo/...) and the pipe-delimited extracts (already
+    lowercased) present the same names to the rest of the pipeline.'''
+    df.columns = [str(col).replace(' ', '').lower() for col in df.columns]
+    return df
+
+
+def _as_int(series):
+    '''Quantities arrive as text from the fixed-width reports and as numbers
+    from the pipe extracts; normalise both to int.'''
+    if pd.api.types.is_numeric_dtype(series):
+        return series.fillna(0).astype(int)
+    return cast_to_into(series.astype(str).str.strip().replace('', '0'))
 
 
 def custDemandParse(folder=None, plant='arlington', file=None):
@@ -63,28 +107,6 @@ def custDemandParse(folder=None, plant='arlington', file=None):
     all_parts.orderdate = pd.to_datetime(all_parts.orderdate, format=date_format)
     all_parts.reldate = pd.to_datetime(all_parts.reldate, format = "%m/%d/%y")
     return waterfallProcess(all_parts)
-
-# Columns the waterfall tables keep; everything else the reports carry
-# (order/line numbers, customer part, the report's own week counter) is dropped.
-WATERFALL_KEEP = ['part', 'reldate', 'shipto', 'pcr',
-                  pre['pq'], pre['pi'], pre['oi']]
-
-
-def normalize_columns(df):
-    '''Lowercases and de-spaces column labels so the legacy .prn reports
-    (Week#/RelDate/ShipTo/...) and the pipe-delimited extracts (already
-    lowercased) present the same names to the rest of the pipeline.'''
-    df.columns = [str(col).replace(' ', '').lower() for col in df.columns]
-    return df
-
-
-def _as_int(series):
-    '''Quantities arrive as text from the fixed-width reports and as numbers
-    from the pipe extracts; normalise both to int.'''
-    if pd.api.types.is_numeric_dtype(series):
-        return series.fillna(0).astype(int)
-    return cast_to_into(series.astype(str).str.strip().replace('', '0'))
-
 
 def waterfallProcess(wf):
     # Takes output of waterfallParse/custDemandParse; makes it more beautiful.
@@ -119,7 +141,7 @@ def waterfallProcess(wf):
 
 def ictrans_filename(plant):
     '''Name of the pipe-delimited transaction extract for `plant`.'''
-    return f'{plant_key[preformat_plant(plant)]}_ictrans.txt'
+    return extract_filename('consumption', plant)
 
 
 def process_ictrans(folder=None, plant='arlington', file=None):
@@ -171,7 +193,6 @@ def process_ictrans(folder=None, plant='arlington', file=None):
 # Column layout of the legacy "Transactions By Item Summary" .prn report.
 LEGACY_CONSUMPTION_COLS = ["Site", "Item Number", "Description", "UM",
                            "Type", "Type1", "Quantity1", "Type2", "Quantity2"]
-
 
 def process_consumption_prn(file, year, week):
     '''
