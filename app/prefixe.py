@@ -4,18 +4,6 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 PROJ_DIR = APP_DIR.resolve().parent
 
-dirs = {
-    'app': APP_DIR,
-    'data': PROJ_DIR / 'data',
-    'reports': PROJ_DIR / "reports",
-}
-
-dirs.update({
-    'processed': dirs['data'] / 'processed',
-    'saved_models': PROJ_DIR / 'models' / 'saved_models',
-    'run_logs': PROJ_DIR / 'logs' / 'routine_runs',
-})
-
 # INCLUDE NEW PLACES HERE !
 plant_key = {'alma': '485', 
              'anniston': 'AM', 
@@ -35,6 +23,21 @@ _BASE_PLANT_SOURCES = ['Arlington',
                        'Hermasillo',
                        'Cottondale',
                        ]
+
+
+
+
+dirs = {
+    'app': APP_DIR,
+    'data': PROJ_DIR / 'data',
+    'reports': PROJ_DIR / "reports",
+}
+
+dirs.update({
+    'processed': dirs['data'] / 'processed',
+    'saved_models': PROJ_DIR / 'models' / 'saved_models',
+    'run_logs': PROJ_DIR / 'logs' / 'routine_runs',
+})
 
 
 

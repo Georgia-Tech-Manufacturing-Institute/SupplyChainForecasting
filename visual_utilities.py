@@ -61,7 +61,7 @@ def week_pivot(df, col='Pct'):
 def pn_date_vis():
     with create_connection() as conn:
         wf   = filter_SQL(conn, table='waterfall_agg')
-        cf   = filter_SQL(conn, table='consumption')
+        cf   = filter_SQL(conn, table='consumption_agg')
         # cost = filter_SQL(conn, table='cost')
 
 
@@ -93,10 +93,67 @@ def pn_date_vis():
         fig.savefig('assets/pn_date_range.png', bbox_inches='tight')
         # print(df.orderqty.isna().sum() / len(df))
 
+from app.prefixe import pre
+pq = pre['pq'] 
+oq = pre['oq']
+
+def split_error_amount(merged, catr = 'lookahead_wk' ):
+
+    fig, ax = plt.subplots(1,1)# width_ratios=[15,1])
+    # vx = merged[pq]*merged.amount
+    # vy = merged[oq]*merged.amount
+    submerg = merged[merged[catr]>0]#[(vx >3e5)&(vy< 1.5e5)]
+    norm = plt.Normalize(submerg[catr].min(), 
+                        submerg[catr].max())
+    sm = plt.cm.ScalarMappable(cmap="viridis", norm=norm)
+    sm.set_array([])
+    ax.set_xlabel(''), ax.set_ylabel('')
+    xmin = -10000
+    xmax = 4e5
+    ax.plot([xmin, xmax], [xmin, xmax], 
+            linestyle='dashed', c='k', alpha=0.5)
+    x = np.linspace(xmin, xmax, 500)
+    ax.fill_between(x, x, xmax, color='blue', alpha=0.2)
+    ax.fill_between(x, xmin, x, color='red', alpha=0.2)
+
+    color = submerg[catr][~submerg.amount.isna()]
+    xxx = submerg[pq]*submerg.amount
+    yyy = submerg[oq]*submerg.amount
+    print(color.shape, xxx.shape, yyy.shape)
+    # ax.get_legend().remove()
+    # plt.colorbar(sm, cax=axes[1])
+    ax.get_xaxis().set_major_formatter(
+        ticker.FuncFormatter(lambda x, p: f'{x/1000:g}k' if x >= 1000 else f'{int(x):,}'))
+    ax.get_yaxis().set_major_formatter(
+        ticker.FuncFormatter(lambda x, p: f'{x/1000:g}k' if x >= 1000 else f'{int(x):,}'))
+
+    cax = sns.scatterplot(x = xxx,  y = yyy, s=3,
+                    ax=ax, zorder=1000,
+                    c= color
+                    )
+    ax.set_ylabel(''), ax.set_xlabel('')
+    ax.set_xlim(xmin, xmax), ax.set_ylim(xmin, xmax)
+    plt.show()
+
+def derive_stats(df):
+    df['error'] = df.orderqty - df.predqty
+    df['usd_delta'] = df.error * df.amount
+    # df['lookahead'] = df.orderidx - df.predidx
+
+    df = df[df.lookahead>=0]
+    # latest_order = df[df.lookahead<8].sort_values('predidx').drop_duplicates(subset=['part', 'orderidx'], keep='last')
+
+    df.loc[df.error == 0, 'Pct'] = 0
+    df.loc[df.error > 0, 'Pct'] = df.error/df[pre['oq']] # Consumption > Predcition
+    df.loc[df.error<0, 'Pct'] = df.error/df[pre['pq']]
+    df.loc[:, 'Pct_Abs'] = df.Pct.abs()*100
+    df = df[df.lookahead >= 1]
+    return df
+
 
 def build_views(conn):
     wf = filter_SQL(conn, table='waterfall_agg')
-    cf = filter_SQL(conn, table='consumption')
+    cf = filter_SQL(conn, table='consumption_agg')
     cost = filter_SQL(conn, table='cost')
     # cost = filter_SQL(conn, table='cost')
     # determine the earliest predictions to include 
@@ -129,4 +186,51 @@ def build_views(conn):
     merged.loc[merged.error<0, 'Pct'] = merged.error/merged[pre['pq']]
     merged.loc[:, 'Pct_Abs'] = merged.Pct.abs()*100
     merged = merged[merged.lookahead >= 1]
-    
+    return merged
+
+def aggregate_view(merged_view):
+    fig, axes = plt.subplots(1,1, figsize=(14, 6))
+    cmap = sns.blend_palette(
+        [ "#FFFFFF", "#9B0101"],
+        as_cmap=True
+    )
+
+    ax = sns.heatmap(merged_view.pivot_table(index=pi, columns='orderidx', 
+                                        values='Pct_Abs'), ax=axes, cmap=cmap) # 
+    ax.set_xlabel(''), ax.set_ylabel('')
+    # ax.invert_yaxis()
+    ax = set_week_year_ticks(ax, axis='both')
+    plt.yticks(rotation=0)
+
+def lookahead_evolution(merged_view):
+    fig, ax = plt.subplots(1,1, figsize=(10,3))
+    sns.lineplot(data =merged_view[merged_view.lookahead >0],
+                x='lookahead', y='Pct_Abs', c='red', 
+                errorbar=('ci', 80),
+                label='Avg. Demand Error', ax=ax)
+    ax.hlines(y=0, xmin=1, xmax=merged_view.lookahead.max(), 
+            linestyles='dashed', 
+            colors='k', label='Zero Error' )
+    ax.invert_xaxis()
+    ax.set_xticks(np.arange(4,24, 4),  )
+    ax.set_ylabel("Absolute % Ordering Error")
+    ax.set_xlabel("Lookahead (weeks until order)")
+    plt.ylim([-10, 90])
+    ax.legend()
+    return ax
+
+
+def split_supply_view(merged_view):
+    oversupply = merged_view[merged_view.error <= 0 ]
+    undersupply = merged_view[merged_view.error >= 0] # Ordered was way more than predicted
+
+    fig, axes = plt.subplots(2, 1, sharex=True, figsize=(12, 10))
+    ax = sns.heatmap(week_pivot(undersupply), ax=axes[0], cmap='Blues') # 
+    axes[0].set_xlabel('')
+    ax = sns.heatmap(week_pivot(oversupply), ax=axes[1], cmap='Reds_r') # 
+
+    ax.set_xlabel('')
+    [ax.invert_yaxis() for ax in axes]
+    ax = set_week_year_ticks(axes[1], axis='x')
+    # ax = set_week_year_ticks(axes[1], axis='x')
+    fig.subplots_adjust(hspace=0.05)

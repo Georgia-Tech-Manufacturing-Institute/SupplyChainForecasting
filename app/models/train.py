@@ -171,7 +171,8 @@ def make_model(config: dict):
     raise ValueError(f"Unknown model_type: {mtype!r}. Use 'hgb', 'rf', or 'nn'.")
 
 
-def model_train(df: pd.DataFrame, holdout_weeks: int = -1,
+def model_train(df: pd.DataFrame, 
+                holdout_weeks: int = -1,
                 plant: str='arlington',
                 config: dict = None):
     """

@@ -157,6 +157,7 @@ def waterfallParse(file):
                 break
     return all_parts
 
+import os
 def consumpParse(file, 
                  cols =["Site", "Part", "Description", "UM","Type", 
                         "Type1", "Quantity1", "Type2", "Quantity2"],
