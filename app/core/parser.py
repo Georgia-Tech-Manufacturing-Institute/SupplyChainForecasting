@@ -235,7 +235,6 @@ def costPrep(cost_file):
     costdata = stateParse(cost_file)
     cols = ['Line', "LineDesc","List", "Name","Part", "UM", "ItemDesc", "PO", "UM1", "Start", "Expire", 
     "T", "Cur", "MinQty1", "Amt1", "MinQty2", "Amt2", "MinQty3", "Amt3", "MinQty4", "Amt4", "MinQty5", "Amt5",
-
     "BaseCurr", "TotalCost", "Remarks"]
     cost_map = pd.DataFrame(costdata, columns=cols).drop([f'MinQty{n}' for n in range(1,6)],axis=1)
 

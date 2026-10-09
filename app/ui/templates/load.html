@@ -65,7 +65,6 @@
             <select name="data_type" class="form-select">
               <option value="Consumption" {% if request.form.get('data_type') == 'Consumption' %}selected{% endif %}>Consumption</option>
               <option value="Waterfall"   {% if request.form.get('data_type') == 'Waterfall'   %}selected{% endif %}>Waterfall</option>
-              <option value="Cost"        {% if request.form.get('data_type') == 'Cost'        %}selected{% endif %}>Cost</option>
             </select>
           </td>
         </tr>
@@ -96,10 +95,12 @@
     <div class="action-row">
       <button type="submit" class="btn-run">Load Data</button>
 
-      {% if result %}
-        <span class="result-banner">✔ {{ result }}</span>
-      {% elif error %}
-        <span class="error-banner">✖ {{ error }}</span>
+      {% if request.form.get('data_type') != 'Cost' %}
+        {% if result %}
+          <span class="result-banner">✔ {{ result }}</span>
+        {% elif error %}
+          <span class="error-banner">✖ {{ error }}</span>
+        {% endif %}
       {% endif %}
     </div>
   </form>
@@ -119,6 +120,80 @@
           then loaded into a processed database. 
           <br> Currently, no strategies exist for item to item data management; still TODO: allow overwrite of data - for now, what you upload is permanently in the system - exerise caution!
 
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="hint-layout" style="margin-top:1.5rem;">
+<div class="card">
+  <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="data_type" value="Cost">
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th colspan="2">Load cost data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row-label">Plant Source</th>
+          <td>
+            <select name="plant_source" class="form-select">
+              {% for p in plant_sources %}
+                <option value="{{ p }}"
+                  {% if request.form.get('plant_source', plant_sources[0]) == p %}selected{% endif %}>
+                  {{ p }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th class="row-label">Price List</th>
+          <td>
+            <input type="file" name="files" multiple
+                   accept=".prn,.txt">
+            <div style="margin-top:4px; font-size:12px; color:var(--text-muted);">
+              Select one or more <code>.prn</code>/<code>.txt</code> price-list reports;
+              any file name is accepted
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="action-row">
+      <button type="submit" class="btn-run">Load Cost</button>
+
+      {% if request.form.get('data_type') == 'Cost' %}
+        {% if result %}
+          <span class="result-banner">✔ {{ result }}</span>
+        {% elif error %}
+          <span class="error-banner">✖ {{ error }}</span>
+        {% endif %}
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+  <div class="helper-sidebar">
+
+    <div class="report-description">
+      <div class="desc-title">
+          Cost Data
+      </div>
+      <div>
+          Cost files are fixed-width price-list reports in the same layout as the
+          diamond reports: a report header, a column-header line, a
+          <code>----</code> ruler that sets the column widths, then one row per
+          price-list line. Only <code>Item Number</code>, <code>Start</code>
+          (MM/DD/YY) and the first break amount are kept, and only the most recent
+          <code>Start</code> per part.
+          <br> Files are deposited under <code>data/&lt;plant&gt;/Cost/</code>;
+          every file in that folder is re-read on each load.
       </div>
     </div>
 

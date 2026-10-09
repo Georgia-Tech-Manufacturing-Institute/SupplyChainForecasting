@@ -1,5 +1,6 @@
 
 logs/
+models
 # Ignore data files 
 *.csv
 *.parquet

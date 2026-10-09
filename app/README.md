@@ -38,6 +38,38 @@ AT00|L0413592AA02600|07/27/26|41464722|ISS-WO|-10|EA|-10|WIP|524
 
 sdfasd
 
+## Expected Cost data format
+
+The anticipated layout is a fixed-width report resembling the diamond reports (see the examples in [processor.py](core/processor.py)): a report header block (program name, report title, `Date:`/`Page:`/`Time:` lines), a column-header line, a `----` ruler line, then one row per price-list line. `stateParse` skips everything before the first ruler and takes the column widths from the ruler's dash groups, so **the ruler must have exactly one dash group per column**, in this order:
+
+```
+Line LineDesc List Name Item Number UM ItemDesc PO UM Start Expire T Cur MinQty1 Amt1 MinQty2 Amt2 MinQty3 Amt3 MinQty4 Amt4 MinQty5 Amt5 BaseCurr TotalCost Remarks
+```
+
+Columns are matched by position, not by header text; the names above are the
+ones `costPrep` assigns. For example (spacing illustrative):
+
+```
+xxpprp.p                                 Price List Report                                     Date: 04/16/26
+Page:    1                               Arlington                                             Time: 13:16:05
+
+Line LineDesc List     Name     Item Number        UM ItemDesc       PO       UM Start    Expire   T Cur MinQty1 Amt1    ...
+---- -------- -------- -------- ------------------ -- -------------- -------- -- -------- -------- - --- ------- ------- ...
+1    ...      ...      ...      84824532           EA ...            ...      EA 01/05/26 12/31/26 P USD     1.0   12.50 ...
+```
+
+Only three fields are kept:
+
+| column   | source field  | notes                                                    |
+|----------|---------------|----------------------------------------------------------|
+| `part`   | `Item Number` | must match the `Part` values in the demand data          |
+| `start`  | `Start`       | effective date, `MM/DD/YY`                               |
+| `amount` | `Amt1`        | unit cost at the first quantity break, parsed as a float |
+
+Rows whose `UM` (second UM column) is `--`, whose `Amt1` is blank, or whose
+`Item Number` is the literal header text are dropped. This removes repeated
+page headers and rulers. Only the latest `Start` per part is kept.
+
 # Notes on parsing
 The final format of the prediction dataset is in the form of a unique (partnumber, orderidx, predidx) triple, where the idx is an integer week index. That is, there can only be one forecast quantity for a given week; new information needs to be well understood as 
 
