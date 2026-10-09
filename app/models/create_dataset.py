@@ -5,13 +5,50 @@ from app.prefixe import pre
 from app.core.loader import filter_SQL
 from app.core.parser import week_to_idx
 from app.models.features import (
-    waterfall_features, consumption_features, id_features, acc_features
+    waterfall_features, consumption_features, id_group_counts, acc_features
 )
 
 pi = pre['pi']
 oi = pre['oi']
 oq = pre['oq']
 pq = pre['pq']
+
+def pull_data(conn):
+    wf   = filter_SQL(conn, table='waterfall_agg')
+    cf   = filter_SQL(conn, table='consumption_agg')
+    cost = filter_SQL(conn, table='cost')
+
+    # Currently I'm ONLY preserving the latest most cost, 
+    # however, cost does actually change over time - a later approach might be to use the time appropriate cost
+    latest_cost = (
+        cost.sort_values('start')
+        .groupby('part', as_index=False)
+        .last()[['part', 'amount']]
+    )
+
+    return wf, cf, latest_cost
+
+
+def merge_features(consumption, waterfall, cost):
+    # ONLY provide information known at the time of 
+    consumption[pi] = consumption[oi]
+    real_consump = consumption.copy()[['part', oi, oq]]
+    consumption.rename({oq:f'last_{oq}'}, axis=1, inplace=True)
+    merged = pd.merge(left=consumption.drop(oi, axis=1), 
+                      right=waterfall,
+                      on=['part', pi], 
+                      how='right').sort_values([pi, 'part'])
+    merged = pd.merge(left=merged, right=cost,
+                      on=['part'], how='left')
+    
+    merged = pd.merge(left=merged, right=real_consump, 
+                      on=['part', oi], how='left')
+
+    merged = acc_features(merged)
+    merged = id_group_counts(merged) # per part number counts by
+    return merged 
+
+
 
 
 def build_training_dataset(conn, min_orderidx: int = None,
@@ -29,24 +66,13 @@ def build_training_dataset(conn, min_orderidx: int = None,
     max_orderidx : latest order week index to include (default: current week)
     remove_nans  : drop rows where orderqty is NaN (True); otherwise fill 0
     """
-    wf   = filter_SQL(conn, table='waterfall_agg')
-    cf   = filter_SQL(conn, table='consumption')
-    cost = filter_SQL(conn, table='cost')
-
+    wf, cf, cost = pull_data(conn)
     waterfall   = waterfall_features(wf, progress_cb=progress_cb)
     consumption = consumption_features(cf)
-
     # do NOT merge on the order date; that will give an old week access to "future" info. 
     # Instead, we give order data from when the prediction is made  
-    consumption[pi] = consumption[oi]
-
-    merged = pd.merge(left=consumption.drop(oi, axis=1), right=waterfall,
-                on=['part', pi], 
-                how='right').sort_values([pi, 'part'])
-
-    merged = acc_features(merged)
-    merged = pd.concat([merged,
-                        id_features(merged['part'], 8)], axis=1)
+    print(consumption.columns)
+    merged = merge_features(consumption, waterfall, cost)
 
     lo = min_orderidx if min_orderidx is not None else cf[oi].min()
     hi = max_orderidx if max_orderidx is not None else wf[oi].max()
@@ -57,14 +83,6 @@ def build_training_dataset(conn, min_orderidx: int = None,
     else:
         real_data = real_data.fillna(0)
 
-    # Use the most recent cost per part (cost table may have multiple start dates)
-    latest_cost = (
-        cost.sort_values('start')
-        .groupby('part', as_index=False)
-        .last()[['part', 'amount']]
-    )
-    real_data = real_data.merge(latest_cost, how='left', on='part')
-     
     # After creating features, we don't need to keep columns with no data
     # assumes that if we have consumption info in a week, we have
     week_counts = real_data.groupby(oi)[oq].count()
@@ -90,7 +108,7 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     horizon, chaining off the prior projected week each time so its predqty
     grounds the next estimate.
     """
-    wf = filter_SQL(conn, table='waterfall_agg')
+    wf, cf, cost = pull_data(conn)
     if predidxs is None:
         current_predictions = wf[wf[pi] == wf[pi].max()]
     elif isinstance(predidxs, int):
@@ -104,28 +122,23 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
         raise ValueError("No valid predictions for the range of weeks given")
 
     current_predidx = current_predictions[pi].max()
+    last_pred = wf[wf[pi]==current_predidx].sort_values(oi).drop_duplicates(subset='part', keep='last')
 
-    cf   = filter_SQL(conn, table='consumption')
-    cost = filter_SQL(conn, table='cost')
+    aug_pred = []
+    for _ in range(aug_lookahead):
+        last_pred[oi] = last_pred[oi] + 1
+        aug_pred.append(last_pred.reset_index(drop=True)) 
+    aug_pred = pd.concat(aug_pred, axis=0)
+    # Only keep rows where its actually a big lookahead
+    aug_pred = aug_pred[(aug_pred[oi] - aug_pred[pi])>aug_lookahead]
 
-    augmented = [wf]
-    lookahead_seed = current_predictions
-    for i in range(aug_lookahead):
-        ahead = lookahead_seed.sort_values(['part', oi, pi])
-        latest_predictions = ahead.groupby(['part']).last().reset_index()
-        latest_predictions[oi] += 1
-        augmented.append(latest_predictions)
-        lookahead_seed = latest_predictions
-    wf = pd.concat(augmented, axis=0)
+    wf = pd.concat([wf, aug_pred], axis=0)
 
     waterfall   = waterfall_features(wf)
     consumption = consumption_features(cf)
-    consumption[pi] = consumption[oi]
 
-    merged = pd.merge(left=consumption.drop(oi, axis=1), right=waterfall,
-                on=['part', pi], 
-                how='right').sort_values([pi, 'part'])
-    merged = acc_features(merged)
+
+    merged = merge_features(consumption, waterfall, cost)
 
     # Keep everything since the requested prediction week(s): known-consumption
     # weeks get scored, weeks without it (incl. aug_lookahead rows) get predicted.
@@ -134,15 +147,7 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     if len(latest_wf) == 0:
         raise ValueError("Date range returns no predictions")
 
-    latest_wf = pd.concat(
-        [latest_wf, id_features(latest_wf['part'], 8)], axis=1
-    )
 
-    latest_cost = (
-        cost.sort_values('start')
-        .groupby('part', as_index=False)
-        .last()[['part', 'amount']]
-    )
     latest_wf = latest_wf.merge(latest_cost, how='left', on='part')
 
     return latest_wf.reset_index(drop=True)

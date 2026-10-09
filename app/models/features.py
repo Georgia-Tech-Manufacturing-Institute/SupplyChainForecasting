@@ -84,8 +84,6 @@ def release_gp_variation(agg_frame, col, unit=None):
         ], axis=1).reset_index()
     return release_accuracy
 
-
-
 def waterfall_features(frame, progress_cb=None):
     """
     progress_cb(step, total, message) — called during the walk-forward loop so
@@ -97,7 +95,7 @@ def waterfall_features(frame, progress_cb=None):
     df['lookahead_wk'] = df[oi] - df[pi]
 
     # Last prediction for the same part
-    for i in np.arange(1, 24, step=2):
+    for i in np.arange(1, 48, step=2):
         df = demand_lag_features(df, i)
     # Shape of the horizon curve within one snapshot: rolled over orderidx inside
     # each (part, predidx), so it only ever reads the snapshot published at predidx.
@@ -175,7 +173,7 @@ def consumption_features(frame):
     newcf[f'{oq}_4wkdiff_qty'] = part_group[oq].diff(4)
 
     # Prior weeks' consumption alongside the merged-in current week
-    newcf = consumption_lag_features(newcf)
+    newcf = consumption_lag_features(newcf, lags=np.arange(0, 12))
 
     for i in range(2,5): # Local history for ordering - how past 
         newcf = roll_statistics(newcf, target_col=oq, n=i, func=['mean', 'std'], unit='qty')
