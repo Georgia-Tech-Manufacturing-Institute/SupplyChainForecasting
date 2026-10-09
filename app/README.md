@@ -1,17 +1,13 @@
-Developer Readme
+! Developer Readme
 
-NB: currently, item number/part numbers of length <8 or containing spaces are deleted. This much be changed in the loader to accept these values. 
+# Model assumptions
 
-# Expected File Formats
-
-```
-Site|Item Number|Trans Date|Trans Number|Trans Type|Trans Qty|Trans UM|Loc Qty Chg|Location|End Balance
-AT00|L0413582AA04600|07/27/26|41464721|ISS-WO|-10|EA|-10|RAW|1522
-AT00|L0413592AA02600|07/27/26|41464722|ISS-WO|-10|EA|-10|WIP|524
-```
+For this model, The week is the smallest unit of time. If all of the data from a given week is not available, then the week is not complete. 
 
 
-sdfasd
+
+# Ingestion Formats
+
 
 ## Expected Demand data format 
 
@@ -31,6 +27,16 @@ AT00|IAC Group - Arlington|GMA139|29|01008607|DAKKOTA INTEGRATED SYSTEMS|0100939
 ```
 
 ## Expected Order 
+Orders are 
+
+```
+Site|Item Number|Trans Date|Trans Number|Trans Type|Trans Qty|Trans UM|Loc Qty Chg|Location|End Balance
+AT00|L0413582AA04600|07/27/26|41464721|ISS-WO|-10|EA|-10|RAW|1522
+AT00|L0413592AA02600|07/27/26|41464722|ISS-WO|-10|EA|-10|WIP|524
+```
+
+
+sdfasd
 
 # Notes on parsing
 The final format of the prediction dataset is in the form of a unique (partnumber, orderidx, predidx) triple, where the idx is an integer week index. That is, there can only be one forecast quantity for a given week; new information needs to be well understood as 

@@ -142,6 +142,104 @@
   .launch-card form { display: flex; flex-direction: column; gap: 8px; }
   .launch-card label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
   .launch-title { font-weight: 700; font-size: 14px; color: var(--text); }
+  /* Every stage is the same height (24px marker + two-line label), so the
+     row never grows as progress or messages change. */
+  .run-stage-row .pip-label {
+    height: 2.6em;
+    overflow: hidden;
+  }
+  .stage-pip.pip-multi { flex: 3; min-width: 180px; }
+  .pip-multi .pip-label { max-width: none; width: 100%; }
+  .pip-label-line {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pip-label-sub { color: var(--text-muted); font-weight: 400; font-family: monospace; font-size: 10px; }
+
+  .pip-bar {
+    display: flex;
+    width: 100%;
+    height: 24px;
+    padding: 3px;
+    gap: 2px;
+    border: 2px solid var(--border);
+    border-radius: 99px;
+    background: var(--bg);
+    overflow: hidden;
+    box-sizing: border-box;
+    position: relative;
+    z-index: 1;
+  }
+  .pip-bar.dense { gap: 0; }
+  .pip-seg { flex: 1; min-width: 0; background: transparent; }
+  .pip-seg:first-child { border-radius: 99px 0 0 99px; }
+  .pip-seg:last-child  { border-radius: 0 99px 99px 0; }
+  .pip-seg-success { background: #4caf50; }
+  .pip-seg-failed  { background: #e53935; }
+  .pip-seg-skipped { background: var(--border); }
+  .pip-seg-running {
+    background: repeating-linear-gradient(45deg, var(--blue) 0 4px, var(--blue-light) 4px 8px);
+    background-size: 11.3px 11.3px;
+    animation: seg-stripe .8s linear infinite;
+  }
+  @keyframes seg-stripe { to { background-position: 11.3px 0; } }
+  .pip-pie { color: #fff; }
+  .pip-pie-stage .pip-label { max-width: 130px; }
+  .pip-skipped .pip-pie { color: var(--text-muted); }
+  .pip-done    .pip-bar { border-color: #4caf50; }
+  .pip-error   .pip-bar { border-color: #e53935; }
+  .pip-running .pip-bar { border-color: var(--blue); }
+
+  .folder-row { display: flex; gap: 6px; }
+  .folder-row input[readonly] {
+    flex: 1;
+    min-width: 0;
+    font-family: monospace;
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--text-muted);
+    cursor: default;
+  }
+  .folder-dialog {
+    width: min(520px, 92vw);
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .folder-dialog::backdrop { background: rgba(0, 0, 0, .35); }
+  .folder-current {
+    font-family: monospace;
+    font-size: 12px;
+    word-break: break-all;
+    padding: 6px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: .5rem 0;
+  }
+  .folder-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .folder-list li {
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .folder-list li:last-child { border-bottom: none; }
+  .folder-list li:hover { background: var(--blue-pale); }
+  .folder-list .folder-empty { color: var(--text-muted); font-style: italic; cursor: default; }
+  .folder-list .folder-empty:hover { background: none; }
+  .folder-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: .75rem; }
+
   .run-script {
     font-size: 11px;
     font-family: monospace;
@@ -151,10 +249,6 @@
     padding: 0 6px;
   }
 </style>
-{% if any_running %}
-<!-- refresh while a run is in progress so its steps fill in -->
-<meta http-equiv="refresh" content="10" />
-{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -184,7 +278,11 @@
         </select>
       </label>
       <label>Incoming folder
-        <input type="text" name="incoming_folder" required placeholder="path containing the plant's extracts" />
+        <span class="folder-row">
+          <input type="text" id="incoming-folder" name="incoming_folder" readonly
+                 value="{{ default_incoming }}" title="{{ default_incoming }}" />
+          <button type="button" id="incoming-browse">Browse…</button>
+        </span>
       </label>
       <div class="action-row">
         <button type="submit" class="btn-run">Run Automation</button>
@@ -236,17 +334,42 @@
 
     {% if r.steps %}
     <div class="stage-row run-stage-row">
-      {% for step in r.steps %}
+      {% for st in r.stages %}
         {% set pip_class = {'success': 'pip-done', 'failed': 'pip-error',
-                             'skipped': 'pip-skipped', 'running': 'pip-running'}[step.status] %}
-        <div class="stage-pip {{ pip_class }}" title="{{ step.name }}: {{ step.status }}{% if step.message %} — {{ step.message }}{% endif %}">
-          <div class="pip-circle">
-            {% if step.status == 'success' %}✓
-            {% elif step.status == 'failed' %}✕
-            {% elif step.status == 'skipped' %}–
-            {% endif %}
-          </div>
-          <div class="pip-label">{{ step.name }}</div>
+                             'skipped': 'pip-skipped', 'running': 'pip-running'}[st.status] %}
+        <div class="stage-pip {{ pip_class }}{{ ' pip-multi' if st.segments and not st.pie }}{{ ' pip-pie-stage' if st.pie }}"
+             title="{{ st.name }}: {{ st.status }}{% if st.message %} — {{ st.message }}{% endif %}">
+          {% if st.pie %}
+            <div class="pip-circle pip-pie" style="background: {{ st.pie }};">
+              {% if st.uniform == 'success' %}✓
+              {% elif st.uniform == 'failed' %}✕
+              {% elif st.uniform == 'skipped' %}–
+              {% endif %}
+            </div>
+            <div class="pip-label">
+              <span class="pip-label-line">{{ st.name }}</span>
+              <span class="pip-label-line pip-label-sub">{{ st.count_label }}</span>
+            </div>
+          {% elif st.segments %}
+            <div class="pip-bar{{ ' dense' if st.segments | length > 40 }}">
+              {% for seg in st.segments %}
+                <div class="pip-seg pip-seg-{{ seg.status }}"
+                     title="{{ seg.name }}: {{ seg.status }}{% if seg.message %} — {{ seg.message }}{% endif %}"></div>
+              {% endfor %}
+            </div>
+            <div class="pip-label">
+              <span class="pip-label-line">{{ st.name }} · {{ st.count_label }}</span>
+              {% if not st.group %}<span class="pip-label-line pip-label-sub">{{ st.message }}</span>{% endif %}
+            </div>
+          {% else %}
+            <div class="pip-circle">
+              {% if st.status == 'success' %}✓
+              {% elif st.status == 'failed' %}✕
+              {% elif st.status == 'skipped' %}–
+              {% endif %}
+            </div>
+            <div class="pip-label">{{ st.name }}</div>
+          {% endif %}
         </div>
         {% if not loop.last %}
           <div class="stage-connector"></div>
@@ -290,4 +413,76 @@
   </p>
 </div>
 {% endif %}
+
+<dialog id="folder-dialog" class="folder-dialog">
+  <div class="launch-title">Choose incoming folder</div>
+  <div class="folder-current" id="folder-current"></div>
+  <ul class="folder-list" id="folder-list"></ul>
+  <div class="folder-actions">
+    <button type="button" id="folder-cancel">Cancel</button>
+    <button type="button" class="btn-run" id="folder-select">Use this folder</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var input   = document.getElementById('incoming-folder');
+  var dialog  = document.getElementById('folder-dialog');
+  var current = document.getElementById('folder-current');
+  var list    = document.getElementById('folder-list');
+  var listUrl = "{{ url_for('runs_folders') }}";
+  var shown   = null;   // path currently listed in the dialog
+  var STORE_KEY = 'runs.incomingFolder';
+
+  // Keep a folder picked earlier this session across the auto-refreshes
+  try {
+    var saved = sessionStorage.getItem(STORE_KEY);
+    if (saved) { input.value = saved; input.title = saved; }
+  } catch (e) {}
+
+  {% if any_running %}
+  // Refresh while a run is in progress so its steps fill in, but not while
+  // the folder dialog is open
+  setInterval(function () { if (!dialog.open) location.reload(); }, 10000);
+  {% endif %}
+
+  function item(label, path, cls) {
+    var li = document.createElement('li');
+    li.textContent = label;
+    if (cls) li.className = cls;
+    if (path) li.addEventListener('click', function () { load(path); });
+    list.appendChild(li);
+  }
+
+  function load(path) {
+    fetch(listUrl + '?path=' + encodeURIComponent(path))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        list.innerHTML = '';
+        if (data.error) { item('⚠ ' + data.error, null, 'folder-empty'); return; }
+        shown = data.path;
+        current.textContent = data.path;
+        if (data.parent) item('⬆ ..', data.parent);
+        data.subdirs.forEach(function (name) {
+          item('📁 ' + name, data.path.replace(/[\\/]$/, '') + '/' + name);
+        });
+        if (!data.subdirs.length) item('No subfolders', null, 'folder-empty');
+      });
+  }
+
+  document.getElementById('incoming-browse').addEventListener('click', function () {
+    load(input.value);
+    dialog.showModal();
+  });
+  document.getElementById('folder-cancel').addEventListener('click', function () { dialog.close(); });
+  document.getElementById('folder-select').addEventListener('click', function () {
+    if (shown) {
+      input.value = shown;
+      input.title = shown;
+      try { sessionStorage.setItem(STORE_KEY, shown); } catch (e) {}
+    }
+    dialog.close();
+  });
+})();
+</script>
 {% endblock %}

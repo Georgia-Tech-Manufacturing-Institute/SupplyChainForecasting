@@ -1,0 +1,215 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Plant Database Schema</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one wide flow diagram (raw files → landing → aggregated), then compact reference notes. */
+:root {
+  --bg: #f5f7f8; --fg: #1a2329; --muted: #5a6873; --line: #b9c4cc; --head: #e3e9ee; --panel: #ffffff;
+  --accent: #0a6c87;
+  --sans: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11171b; --fg: #e2e8ec; --muted: #93a2ad; --line: #3a4852; --head: #1e2a32; --panel: #161e23; --accent: #52bddb; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11171b; --fg: #e2e8ec; --muted: #93a2ad; --line: #3a4852; --head: #1e2a32; --panel: #161e23; --accent: #52bddb; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); padding: 32px 16px 48px; }
+main { max-width: 1040px; margin: 0 auto; display: grid; gap: 28px; }
+h1 { font-size: 26px; margin: 0; text-wrap: balance; font-weight: 600; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 68ch; }
+code { font: 13px var(--mono); }
+.wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+figure { margin: 0; }
+svg { display: block; width: 100%; min-width: 860px; height: auto; color: var(--fg); }
+figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; max-width: 80ch; }
+svg text { font-family: var(--sans); font-size: 11px; fill: var(--fg); }
+svg .mono { font-family: var(--mono); font-size: 12px; }
+svg .ttl { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+svg .muted { fill: var(--muted); }
+svg .col { font-size: 11px; letter-spacing: .08em; fill: var(--muted); font-weight: 600; }
+svg .tag { font-family: var(--mono); font-size: 10px; fill: var(--accent); }
+svg .box { fill: var(--panel); stroke: var(--line); }
+svg .hd { fill: var(--head); }
+svg .file { fill: none; stroke: var(--muted); stroke-dasharray: 4 3; }
+svg .flow { fill: none; stroke: var(--fg); stroke-width: 1.3; }
+svg .log { fill: none; stroke: var(--muted); stroke-width: 1.1; stroke-dasharray: 5 4; }
+svg .join { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 2 4; stroke-linecap: round; }
+svg .dot { fill: var(--accent); }
+svg .ah { fill: var(--fg); }
+svg .ahm { fill: var(--muted); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px 32px; }
+.notes section { min-width: 0; }
+.notes h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.notes p { margin: 0; }
+</style>
+
+<main>
+  <header>
+    <h1>Plant Database Schema</h1>
+    <p class="lede">Each plant gets its own SQLite file at <code>data/processed/{plant}.db</code>, created by <code>sql_setup()</code> in <code>app/core/loader.py</code>. All plants share the six tables below.</p>
+  </header>
+
+  <div class="wrap">
+  <figure>
+    <svg viewBox="0 0 1000 670" role="img" aria-label="Raw extracts and legacy reports land in waterfall and consumption, which are summed into waterfall_agg and consumption_agg. Cost files load directly into cost. Each load records its weeks in loaded_files. Models and reports read only waterfall_agg, consumption_agg and cost.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahm" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <!-- column labels -->
+      <text class="col" x="16" y="24">RAW FILES</text>
+      <text class="col" x="310" y="24">LANDING</text>
+      <text class="col" x="690" y="24">AGGREGATED</text>
+
+      <!-- source files -->
+      <rect class="file" x="16" y="60" width="184" height="44" rx="4"/>
+      <text class="mono" x="26" y="79">{key}_custdemand.txt</text>
+      <text class="muted" x="26" y="95">weekly demand extract</text>
+
+      <rect class="file" x="16" y="140" width="184" height="44" rx="4"/>
+      <text class="mono" x="26" y="159">YYYYwkWW.prn</text>
+      <text class="muted" x="26" y="175">legacy diamond report</text>
+
+      <rect class="file" x="16" y="320" width="184" height="44" rx="4"/>
+      <text class="mono" x="26" y="339">{key}_ictrans.txt</text>
+      <text class="muted" x="26" y="355">transactions (ISS-SO)</text>
+
+      <rect class="file" x="16" y="440" width="184" height="44" rx="4"/>
+      <text class="mono" x="26" y="459">YYYYwkWW.prn</text>
+      <text class="muted" x="26" y="475">legacy weekly consumption</text>
+
+      <rect class="file" x="16" y="556" width="184" height="44" rx="4"/>
+      <text class="mono" x="26" y="575">Cost/*</text>
+      <text class="muted" x="26" y="591">price lists</text>
+
+      <!-- waterfall -->
+      <rect class="box" x="310" y="40" width="230" height="176" rx="4"/>
+      <path class="hd" d="M314,40 h222 a4,4 0 0 1 4,4 v24 h-230 v-24 a4,4 0 0 1 4,-4 z"/>
+      <text class="ttl" x="322" y="59">waterfall</text>
+      <text class="mono" x="322" y="82">part</text><text class="mono muted" x="440" y="82">TEXT</text><text class="tag" x="528" y="82" text-anchor="end">UQ</text>
+      <text class="mono" x="322" y="102">orderidx</text><text class="mono muted" x="440" y="102">INT</text><text class="tag" x="528" y="102" text-anchor="end">UQ</text>
+      <text class="mono" x="322" y="122">reldate</text><text class="mono muted" x="440" y="122">DATE</text><text class="tag" x="528" y="122" text-anchor="end">UQ</text>
+      <text class="mono" x="322" y="142">shipto</text><text class="mono muted" x="440" y="142">TEXT</text><text class="tag" x="528" y="142" text-anchor="end">UQ</text>
+      <text class="mono" x="322" y="162">predidx</text><text class="mono muted" x="440" y="162">INT</text>
+      <text class="mono" x="322" y="182">qty</text><text class="mono muted" x="440" y="182">INT</text>
+      <text class="mono" x="322" y="202">pcr</text><text class="mono muted" x="440" y="202">INT</text>
+
+      <!-- consumption (landing) -->
+      <rect class="box" x="310" y="300" width="230" height="136" rx="4"/>
+      <path class="hd" d="M314,300 h222 a4,4 0 0 1 4,4 v24 h-230 v-24 a4,4 0 0 1 4,-4 z"/>
+      <text class="ttl" x="322" y="319">consumption</text>
+      <text class="mono" x="322" y="342">trans_number</text><text class="mono muted" x="440" y="342">TEXT</text><text class="tag" x="528" y="342" text-anchor="end">PK</text>
+      <text class="mono" x="322" y="362">part</text><text class="mono muted" x="440" y="362">TEXT</text>
+      <text class="mono" x="322" y="382">orderdate</text><text class="mono muted" x="440" y="382">DATE</text>
+      <text class="mono" x="322" y="402">orderqty</text><text class="mono muted" x="440" y="402">INT</text>
+      <text class="mono" x="322" y="422">orderidx</text><text class="mono muted" x="440" y="422">INT</text><text class="tag" x="528" y="422" text-anchor="end">IDX</text>
+
+      <!-- cost -->
+      <rect class="box" x="310" y="530" width="230" height="96" rx="4"/>
+      <path class="hd" d="M314,530 h222 a4,4 0 0 1 4,4 v24 h-230 v-24 a4,4 0 0 1 4,-4 z"/>
+      <text class="ttl" x="322" y="549">cost</text>
+      <circle class="dot" cx="526" cy="544" r="4"/>
+      <text class="mono" x="322" y="572">part</text><text class="mono muted" x="440" y="572">TEXT</text><text class="tag" x="528" y="572" text-anchor="end">UQ</text>
+      <text class="mono" x="322" y="592">amount</text><text class="mono muted" x="440" y="592">REAL</text>
+      <text class="mono" x="322" y="612">start</text><text class="mono muted" x="440" y="612">DATE</text><text class="tag" x="528" y="612" text-anchor="end">UQ</text>
+
+      <!-- waterfall_agg -->
+      <rect class="box" x="690" y="40" width="220" height="156" rx="4"/>
+      <path class="hd" d="M694,40 h212 a4,4 0 0 1 4,4 v24 h-220 v-24 a4,4 0 0 1 4,-4 z"/>
+      <text class="ttl" x="702" y="59">waterfall_agg</text>
+      <circle class="dot" cx="896" cy="54" r="4"/>
+      <text class="mono" x="702" y="82">part</text><text class="mono muted" x="810" y="82">TEXT</text><text class="tag" x="898" y="82" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="102">orderidx</text><text class="mono muted" x="810" y="102">INT</text><text class="tag" x="898" y="102" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="122">predidx</text><text class="mono muted" x="810" y="122">INT</text><text class="tag" x="898" y="122" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="142">predqty</text><text class="mono muted" x="810" y="142">INT</text>
+      <text class="mono" x="702" y="162">augmented</text><text class="mono muted" x="810" y="162">BOOL</text><text class="tag" x="898" y="162" text-anchor="end">=0</text>
+      <text class="mono" x="702" y="182">pcr</text><text class="mono muted" x="810" y="182">INT</text>
+
+      <!-- consumption_agg -->
+      <rect class="box" x="690" y="300" width="220" height="96" rx="4"/>
+      <path class="hd" d="M694,300 h212 a4,4 0 0 1 4,4 v24 h-220 v-24 a4,4 0 0 1 4,-4 z"/>
+      <text class="ttl" x="702" y="319">consumption_agg</text>
+      <circle class="dot" cx="896" cy="314" r="4"/>
+      <text class="mono" x="702" y="342">part</text><text class="mono muted" x="810" y="342">TEXT</text><text class="tag" x="898" y="342" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="362">orderidx</text><text class="mono muted" x="810" y="362">INT</text><text class="tag" x="898" y="362" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="382">orderqty</text><text class="mono muted" x="810" y="382">INT</text>
+
+      <!-- loaded_files -->
+      <rect class="box" x="690" y="500" width="220" height="116" rx="4"/>
+      <path class="hd" d="M694,500 h212 a4,4 0 0 1 4,4 v24 h-220 v-24 a4,4 0 0 1 4,-4 z"/>
+      <text class="ttl" x="702" y="519">loaded_files</text>
+      <text class="mono" x="702" y="542">filename</text><text class="mono muted" x="810" y="542">TEXT</text>
+      <text class="mono" x="702" y="562">data_type</text><text class="mono muted" x="810" y="562">TEXT</text><text class="tag" x="898" y="562" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="582">week_idx</text><text class="mono muted" x="810" y="582">INT</text><text class="tag" x="898" y="582" text-anchor="end">UQ</text>
+      <text class="mono" x="702" y="602">load_date</text><text class="mono muted" x="810" y="602">DATE</text>
+
+      <!-- flows: files → tables -->
+      <line class="flow" x1="200" y1="82" x2="308" y2="82" marker-end="url(#ah)"/>
+      <line class="flow" x1="200" y1="162" x2="308" y2="162" marker-end="url(#ah)"/>
+      <text class="muted" x="255" y="154" text-anchor="middle">if file not logged</text>
+      <line class="flow" x1="200" y1="342" x2="308" y2="342" marker-end="url(#ah)"/>
+      <text class="muted" x="255" y="334" text-anchor="middle">open weeks only</text>
+      <path class="flow" d="M200,462 H672 V370 H688" marker-end="url(#ah)"/>
+      <text class="muted" x="436" y="455" text-anchor="middle">already weekly totals; bypasses landing</text>
+      <line class="flow" x1="200" y1="578" x2="308" y2="578" marker-end="url(#ah)"/>
+      <text class="muted" x="255" y="570" text-anchor="middle">latest start per part</text>
+
+      <!-- flows: landing → aggregated -->
+      <line class="flow" x1="540" y1="120" x2="688" y2="120" marker-end="url(#ah)"/>
+      <text x="610" y="96" text-anchor="middle">SUM per part,</text>
+      <text x="610" y="109" text-anchor="middle">orderidx, predidx</text>
+      <text class="muted" x="610" y="136" text-anchor="middle">qty → predqty</text>
+
+      <line class="flow" x1="540" y1="345" x2="688" y2="345" marker-end="url(#ah)"/>
+      <text x="605" y="318" text-anchor="middle">week complete</text>
+      <text class="muted" x="605" y="331" text-anchor="middle">(7 distinct dates)</text>
+      <text x="605" y="362" text-anchor="middle">SUM, += on conflict</text>
+      <text class="muted" x="605" y="375" text-anchor="middle">then DELETE rows</text>
+
+      <!-- logging to loaded_files -->
+      <path class="log" d="M910,120 H965 V580 H912" marker-end="url(#ahm)"/>
+      <path class="log" d="M910,350 H935 V548 H912" marker-end="url(#ahm)"/>
+      <text class="muted" transform="translate(984 350) rotate(-90)" text-anchor="middle">logs each predidx week</text>
+      <text class="muted" transform="translate(954 450) rotate(-90)" text-anchor="middle">logs orderidx</text>
+
+      <!-- the join downstream code relies on -->
+      <line class="join" x1="800" y1="200" x2="800" y2="296"/>
+      <circle class="dot" cx="800" cy="200" r="3"/>
+      <circle class="dot" cx="800" cy="296" r="3"/>
+      <text x="790" y="244" text-anchor="end" style="fill: var(--accent)">joined on part + orderidx</text>
+      <text class="muted" x="790" y="258" text-anchor="end">forecast vs. actual</text>
+
+      <!-- legend -->
+      <circle class="dot" cx="20" cy="651" r="4"/>
+      <text class="muted" x="30" y="655">read by create_dataset, reporting and the UI</text>
+      <text class="tag" x="300" y="655">UQ</text>
+      <text class="muted" x="320" y="655">part of the table's UNIQUE key (inserts use OR IGNORE)</text>
+      <line class="log" x1="640" y1="651" x2="670" y2="651"/>
+      <text class="muted" x="678" y="655">week recorded in loaded_files</text>
+    </svg>
+    <figcaption>Only the three tables marked with a dot are read downstream. <code>waterfall</code> and <code>consumption</code> are written by the loaders and never queried by models. A consumption week moves to <code>consumption_agg</code> only once all seven of its dates are present. Until then its transactions wait in the landing table, and later extracts keep adding to them.</figcaption>
+  </figure>
+  </div>
+
+  <div class="notes">
+    <section>
+      <h2>No foreign keys</h2>
+      <p>Tables relate only through <code>part</code> and the week indices <code>orderidx</code> (week demanded or consumed) and <code>predidx</code> (week the forecast was released). SQLite enforces none of these links, so a part can exist in one table and be missing from another. <code>filter_disjoint()</code> trims those parts at dataset time.</p>
+    </section>
+    <section>
+      <h2>Dedup is by key, not by filter</h2>
+      <p>Every insert goes through <code>INSERT OR IGNORE</code>. Overlapping waterfall extracts are absorbed by the UNIQUE keys, and re-loaded transactions are rejected by the <code>trans_number</code> primary key. The only upsert is the additive one into <code>consumption_agg</code>.</p>
+    </section>
+    <section>
+      <h2>loaded_files is per week</h2>
+      <p>Its key is <code>(data_type, week_idx)</code>, not the filename. A waterfall extract writes one row per release week it covers, and a consumption load writes one per closed order week. The loaders read it back to skip weeks that are already closed. <code>cost</code> loads are not logged.</p>
+    </section>
+    <section>
+      <h2>Schema version</h2>
+      <p><code>SCHEMA_VERSION = 1</code> moved the old pre-aggregated <code>consumption</code> into <code>consumption_agg</code>. The <code>migrate_schema()</code> call in <code>sql_setup()</code> is currently commented out, so a v0 database opened now keeps its old <code>consumption</code> table.</p>
+    </section>
+  </div>
+</main>
+
+</body></html>

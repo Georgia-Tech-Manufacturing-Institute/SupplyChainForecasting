@@ -158,40 +158,6 @@
     </table>
   </div>
 
-  <div class="card">
-    <form method="POST" action="{{ url_for('add_plant') }}">
-      <table class="form-table">
-        <thead>
-          <tr>
-            <th colspan="2">Register a new plant source</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th class="row-label">Plant Name</th>
-            <td>
-              <input type="text" name="plant_name" class="form-select" placeholder="e.g. Saltillo" required>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div class="action-row">
-        <button type="submit" class="btn-run">Add Plant</button>
-
-        {% if plant_result %}
-          <span class="result-banner">✔ {{ plant_result }}</span>
-        {% elif plant_error %}
-          <span class="error-banner">✖ {{ plant_error }}</span>
-        {% endif %}
-      </div>
-    </form>
-  </div>
-  <div style="color:var(--text-muted); font-size:12px; margin-top:8px;">
-    Adding a plant creates its SQLite database with the standard schema, ready to load data into via the Load page.
-  </div>
-</div>
-
 <!-- ── Changelog ───────────────────────────────── -->
 <div style="margin-top:48px; max-width:720px;">
   <div class="page-title" style="font-size:18px; margin-bottom:16px;">

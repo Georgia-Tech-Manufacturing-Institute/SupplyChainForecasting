@@ -146,6 +146,7 @@
         <th rowspan="2" class="sortable" data-col="14">Obj. <span class="sort-arrow">↕</span></th>
         <th rowspan="2" class="sortable" data-col="15">Scaled <span class="sort-arrow">↕</span></th>
         <th rowspan="2" class="sortable" data-col="16">Features <span class="sort-arrow">↕</span></th>
+        <th rowspan="2" class="sortable" data-col="17">Train Time <span class="sort-arrow">↕</span></th>
         <th rowspan="2"></th>
       </tr>
       <tr>
@@ -162,7 +163,7 @@
         {% if m.get('error') %}
           <tr class="err-row" data-col0="{{ m.name }}">
             <td class="model-name">{{ m.name }}</td>
-            <td colspan="17">⚠ {{ m.error }}</td>
+            <td colspan="18">⚠ {{ m.error }}</td>
           </tr>
         {% else %}
           {% set sm = m.scores_model %}
@@ -185,6 +186,7 @@
             data-col14="{{ m.objective }}"
             data-col15="{{ 1 if m.scaled else 0 }}"
             data-col16="{{ m.n_features }}"
+            data-col17="{{ m.train_seconds if m.train_seconds is not none else '' }}"
           >
             <td class="model-name">{{ m.name }}</td>
             <td>{{ m.plant | title }}</td>
@@ -241,6 +243,13 @@
               {% endif %}
             </td>
             <td style="text-align:center;">{{ m.n_features }}</td>
+            <td style="text-align:center;">
+              {%- set s = m.train_seconds -%}
+              {%- if s is none -%}—
+              {%- elif s < 60 -%}{{ '%.1f' | format(s) }}s
+              {%- else -%}{{ (s // 60) | int }}m {{ (s % 60) | int }}s
+              {%- endif -%}
+            </td>
 
             <td>
               <a class="btn-retrain" href="{{ url_for('retrain', populate=m.name) }}">Retrain model</a>

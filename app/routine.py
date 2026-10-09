@@ -168,6 +168,10 @@ def runAutomation(plant, autodir, archive_dir=None, title=None):
     except Exception:
         run.finish('failed')
         raise
+    finally:
+        # No-op once finished; catches KeyboardInterrupt/SystemExit, which
+        # skip the handler above and would otherwise leave the run 'running'
+        run.interrupt()
 
 
 

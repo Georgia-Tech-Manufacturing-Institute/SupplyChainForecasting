@@ -14,12 +14,11 @@ Manual Reporting:
 ## Automated Workflow 
 The fundamental workflow for the tool does not involve any  
 1. SCDW folder updates with new data on Tuesdays (?). This includes two files per plant: ictrans and custdemand. ictrans gives all transactions recorded within the past 8 days, while custdemand gives the customer waterfall.
-2. A bash script stored in routine.py. The script 
+2. A bash script stored in routine.py. The script searches the SCDW folder for files in the convention [plantkey]_[filetype].txt where file is stored
 3. 
-4. 
 
-#. Collect reports 
 
+Q: How  
 ## Manual reporting
 
 The reporting module exists to provide feedback on the tool itself and model performance. The following operations are supported:
@@ -31,9 +30,7 @@ The reporting module exists to provide feedback on the tool itself and model per
 
 
 ## Filling missing week data
-If a data upload is missed, 
-
-## Bulk upload
+Based on the data mosaic shown on the Data load page, it may be evident that there is missing info. To manually load data outside of the automation pipeline, 
 
 
 # Advanced user flows
@@ -42,10 +39,10 @@ This is stuff that should be left to the professionals (ie someone who knows how
 ## New plant
 Needed: Historical data in a known form. Form is either the concatenated diamond reports or the automated warehouse format; the later is preferred. 
 
-1. Register the plant source. On the **Home** page, use the "Add Plant" form to enter the plant's name and submit. This:
-   - Add the name of the plant in `app/prefixe.py` in the list of "_BASE_PLANT_SOURCES' so it appears in the plant dropdowns on the Load, Reports, Train, Predict, and Evaluate pages. IF there is not a plant code, add one now. 
-   - Initializes the plant's SQLite database at `data/processed/<plant>.db` with the standard schema (`waterfall`, `consumption`, `cost`, `waterfall_agg`, `loaded_files` tables), ready to receive data.
-   - Alternatively, a plant can be added by hand by adding its name to the `PLANT_SOURCES` list in `app/prefixe.py`; its database still gets created automatically the first time data is loaded for it (or you can call `app.core.loader.create_connection(plant)` directly).
+1. Register the plant source. Open' app/prefixe.py'
+   - Add the name of the plant in `app/prefixe.py` in the list of "_BASE_PLANT_SOURCES'
+   - Double check that there is an existing plant key 
+
 2. Prepare the raw historical files for the plant, one file per week, named `YYYYwkWW.prn` or `.txt` (e.g. `2026wk01.prn`), for each data type you have (Waterfall, Consumption, Cost).
 3. On the **Load** page, select the new plant under "Plant Source", choose the "Data Type", and upload the files (individually or as a folder). Files are copied to `data/<plant>/raw/<data type>/` and parsed into that plant's database.
 4. Repeat step 3 for each data type / batch of weeks you need to backfill.
@@ -62,33 +59,12 @@ Given a plant "ExamplePlant", say we want to remove it and all its data. There i
 4. Optionally, delete any saved models trained on that plant under `models/saved_models/` (check each bundle's `plant` field, e.g. via the Models page).
 5. Restart the app so the in-memory `PLANT_SOURCES` list picks up the removal.
 
-## 
+## Feature Development 
 
-Stores prior versions of the model. Metadata should include the span of dates and features that the model was trained with as well as performance statistics. 
+Model features are elaborated in app/models/features.py. There are 4 types of features, waterfall, consumption, accuracy, and part.  
 
-MOST IMPORTANT NOTE: This set of features has room to grow and expand with the data. The BIGGEST concern when adding new features is ENSURING that future information is NOT included. The input to both model training and prediction is a row representing a future order date (orderidx), made on a date (predictidx). Each row should contain features (columns) ONLY based on information available up to the prediction date. Incorporating future information will often improve performance, but requires information that isn't actually available for real future projections! 
+The BIGGEST concern when adding new features is ENSURING that future information is NOT included. The input to both model training and prediction is a row representing a future order date (orderidx), made on a date (predictidx). Each row should contain features (columns) ONLY based on information available up to the prediction date. Incorporating future information will often improve performance, but requires information that isn't actually available for real future projections! 
 
-### Adding new features
-
-Feature engineering utilities for the supply chain forecasting model. Consumes the merged prediction/order frame (and standalone consumption/order frames) and derives columns describing demand history, prediction stability, and seasonality.
-
-Defined in [app/prefixe.py](app/prefixe.py) and imported as short aliases for consistency:
-
-| alias | value      | meaning                          |
-|-------|------------|-----------------------------------|
-| `pi`  | `predidx`  | prediction week index             |
-| `oi`  | `orderidx` | order week index                  |
-| `pq`  | `predqty`  | predicted quantity                |
-| `oq`  | `orderqty` | actual/ordered quantity           |
-
-Generated feature columns generally follow:
-```
-<originating column>_<operator>_<unit>
-```
-
-e.g. `predqty_mean_qty`, `orderqty_gap_wk`. Summary-style features instead use
-`<summarizor>_<unit>`, e.g. `lookahead_wk`.
----
 
 feature engineering is a tantalizing method of model improvement. However, there are a lot of pitfalls within this dataset in particular. 
 - Seeing into the future: This is time series 101, but just to be abundantly clear: features should NEVER learn into not available at the time of row creation. This is tricky when it comes to these datasets, because when the consumption and prediction is merged, you can accidentally look into the future if you're not careful.
@@ -96,8 +72,12 @@ feature engineering is a tantalizing method of model improvement. However, there
 - Lag != prior week. this is one i have to catch myself doing; because the customer demand is not always present for every week, sometimes the "last" value is from many weeks ago. At the time of the last week, the lagging value IS the last known prediction, but it was not forecast in the prior week. 
 
 opportunities for new features (performed by an intern or others)
-- Exogeous features
+- Exogeous features: 
 - 
+
+## Moving devices
+
+Suppose that the current information is interested 
 
 
 

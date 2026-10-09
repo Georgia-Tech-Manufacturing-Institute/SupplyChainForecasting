@@ -25,8 +25,6 @@ _BASE_PLANT_SOURCES = ['Arlington',
                        ]
 
 
-
-
 dirs = {
     'app': APP_DIR,
     'data': PROJ_DIR / 'data',
@@ -35,6 +33,7 @@ dirs = {
 
 dirs.update({
     'processed': dirs['data'] / 'processed',
+    'incoming': dirs['data'] / 'incoming',   # default folder routine.py checks for new extracts
     'saved_models': PROJ_DIR / 'models' / 'saved_models',
     'run_logs': PROJ_DIR / 'logs' / 'routine_runs',
 })

@@ -1,3 +1,6 @@
+import os
+import time
+
 import joblib
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
@@ -185,6 +188,7 @@ def model_train(df: pd.DataFrame,
     Returns a bundle dict with models, config, and feature column names.
     If holdout_weeks > 0, also evaluates and returns scores in the bundle.
     """
+    t_start = time.perf_counter()
     if config is None:
         config = {'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0}
 
@@ -291,6 +295,8 @@ def model_train(df: pd.DataFrame,
         score_block(holdout_df[oq], holdout_df['est_orderqty'], "Combined A+B", split_week, records)
         score_block(holdout_df[oq], holdout_df['naive_orderqty'], "Naive baseline", split_week, records)
         bundle['scores'] = pd.DataFrame(records)
+    # Wall time of fitting + holdout scoring (excludes dataset building)
+    bundle['train_seconds'] = round(time.perf_counter() - t_start, 1)
     return bundle
 
 
@@ -374,7 +380,11 @@ def save_model(bundle: dict, name: str) -> str:
     model_dir = dirs['saved_models']
     model_dir.mkdir(parents=True, exist_ok=True)
     path = model_dir / f"{name}.pkl"
-    joblib.dump(bundle, path)
+    # Write then rename, so an interrupted save never leaves a truncated .pkl
+    # (optimize.py overwrites the same file each time a trial improves).
+    tmp = model_dir / f"{name}.pkl.tmp"
+    joblib.dump(bundle, tmp)
+    os.replace(tmp, path)
     return str(path)
 
 

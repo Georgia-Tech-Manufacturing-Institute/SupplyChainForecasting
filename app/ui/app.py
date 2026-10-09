@@ -6,6 +6,7 @@ import threading
 import uuid
 import time
 from datetime import datetime
+from pathlib import Path
 
 # Make the project root importable so app.* packages resolve
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -19,7 +20,7 @@ from app.models.train import model_train, save_model, load_model, predict_from_b
 from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.core.run_logger import list_runs
-from app.routine import runAutomation
+from app.routine import runAutomation, DATA_TYPES
 from app.optimize import runOptimization, DEFAULT_TRIALS
 import sqlite3
 from app import prefixe
@@ -343,6 +344,7 @@ def _load_model_metadata():
                 'trained_at':   trained_at.strftime('%Y-%m-%d %H:%M'),
                 'test_weeks':   test_weeks,
                 'n_features':   len(bundle.get('feature_cols', [])),
+                'train_seconds': bundle.get('train_seconds'),
                 'has_holdout':  'scores' in bundle,
                 'scores_model': scores_model,
                 'scores_naive': scores_naive,
@@ -501,20 +503,99 @@ def _fmt_elapsed(started_at, finished_at):
     hrs, mins = divmod(mins, 60)
     return f"{hrs}h {mins}m"
 
+def _group_status(statuses):
+    for s in ('failed', 'running', 'success'):
+        if s in statuses:
+            return s
+    return 'skipped'
+
+def _progress_segments(step):
+    """One segment per unit of a step's reported progress (e.g. one per trial)."""
+    cur, tot = step['progress']['current'], step['progress']['total']
+    if step['status'] == 'success':
+        cur = tot
+    segs = []
+    for i in range(tot):
+        if i < cur:
+            status = 'success'
+        elif i == cur and step['status'] in ('running', 'failed'):
+            status = step['status']
+        else:
+            status = 'pending'
+        segs.append({'name': f'Trial {i + 1}', 'status': status, 'message': ''})
+    return segs
+
+_PIE_COLORS = {'success': '#4caf50', 'failed': '#e53935',
+               'skipped': 'var(--border)', 'running': 'var(--blue)', 'pending': 'var(--bg)'}
+
+def _pie_gradient(segments):
+    """conic-gradient() with one slice per run of same-status segments."""
+    n = len(segments)
+    slices, start = [], 0
+    for i in range(1, n + 1):
+        if i == n or segments[i]['status'] != segments[start]['status']:
+            color = _PIE_COLORS.get(segments[start]['status'], 'var(--bg)')
+            slices.append(f'{color} {100 * start / n:.2f}% {100 * i / n:.2f}%')
+            start = i
+    return f"conic-gradient({', '.join(slices)})"
+
+def _build_stages(steps):
+    """Collapse the step list into what the Run History row draws: steps
+    sharing a prefix (Load Consumption/Waterfall/Cost) become one stage with
+    a segment each, and a step reporting progress gets a segment per unit."""
+    stages = []
+    for step in steps:
+        prefix, _, rest = step['name'].partition(' ')
+        if prefix == 'Load' and rest:
+            if stages and stages[-1]['name'] == 'Load' and stages[-1].get('group'):
+                stages[-1]['segments'].append({**step, 'name': rest})
+            else:
+                stages.append({'name': 'Load', 'group': True,
+                               'segments': [{**step, 'name': rest}]})
+        elif step.get('progress') and step['progress'].get('total'):
+            stages.append({**step, 'segments': _progress_segments(step)})
+        else:
+            stages.append(step)
+
+    for st in stages:
+        segs = st.get('segments')
+        if not segs:
+            continue
+        if st.get('group'):
+            # Always one segment per data type, even before later loads are logged
+            seen = {s['name'] for s in segs}
+            segs += [{'name': t, 'status': 'pending', 'message': ''}
+                     for t in DATA_TYPES if t not in seen]
+            st['status'] = _group_status([s['status'] for s in segs])
+            st['message'] = '; '.join(f"{s['name']}: {s['message'] or s['status']}" for s in segs)
+            n_done = sum(s['status'] not in ('running', 'pending') for s in segs)
+            st['count_label'] = f'{n_done}/{len(segs)}'
+        else:
+            cur, tot = st['progress']['current'], st['progress']['total']
+            st['count_label'] = (f'trial {min(cur + 1, tot)}/{tot}' if st['status'] == 'running'
+                                 else f'{tot} trials')
+        # Once finished, the bar collapses into a circle drawn as a pie of its parts
+        if st['status'] != 'running':
+            st['pie'] = _pie_gradient(segs)
+            seg_statuses = {s['status'] for s in segs}
+            st['uniform'] = seg_statuses.pop() if len(seg_statuses) == 1 else None
+    return stages
+
 def _format_run(run):
     status = run.get('status', 'running')
-    # A run stuck in 'running' for a long time almost certainly crashed
-    # without a chance to record its own failure (killed process, etc).
+    # A run that hasn't written to its log for a long time almost certainly
+    # crashed without a chance to record its own failure (killed process, etc).
     if status == 'running':
         try:
-            started = datetime.fromisoformat(run['started_at'])
-            if (datetime.now() - started).total_seconds() > 2 * 3600:
+            last = datetime.fromisoformat(run.get('updated_at') or run['started_at'])
+            if (datetime.now() - last).total_seconds() > 2 * 3600:
                 status = 'interrupted'
         except (ValueError, KeyError):
             pass
     run['status'] = status
     run['status_label'] = _RUN_STATUS_LABELS.get(status, status)
     run['elapsed_str'] = _fmt_elapsed(run.get('started_at'), run.get('finished_at'))
+    run['stages'] = _build_stages(run.get('steps', []))
     return run
 
 @app.route("/runs")
@@ -525,6 +606,7 @@ def runs():
                            any_running=any(r['status'] == 'running' for r in formatted),
                            plant_sources=PLANT_SOURCES,
                            default_trials=DEFAULT_TRIALS,
+                           default_incoming=str(dirs['incoming']),
                            run_result=request.args.get("run_result"),
                            run_error=request.args.get("run_error"))
 
@@ -555,13 +637,44 @@ def _launch_routine(kind: str, plant: str, target, **kwargs) -> bool:
     return True
 
 
+def _browse_root():
+    dirs['incoming'].mkdir(parents=True, exist_ok=True)
+    return dirs['data'].resolve()
+
+def _within_browse_root(path) -> bool:
+    root = _browse_root()
+    path = Path(path).resolve()
+    return path == root or root in path.parents
+
+
+@app.route("/runs/folders")
+def runs_folders():
+    """List subfolders for the incoming-folder picker. The UI runs in a
+    headless container, so a native OS dialog isn't possible; browsing is
+    confined to the data folder (the part of the host mounted into it)."""
+    path = Path(request.args.get("path") or dirs['incoming']).resolve()
+    if not _within_browse_root(path) or not path.is_dir():
+        path = _browse_root()
+    try:
+        subdirs = sorted((p.name for p in path.iterdir()
+                          if p.is_dir() and not p.name.startswith('.')), key=str.lower)
+    except OSError as exc:
+        return jsonify({'error': str(exc)}), 400
+    root = _browse_root()
+    return jsonify({
+        'path':    str(path),
+        'parent':  str(path.parent) if path != root else None,
+        'subdirs': subdirs,
+    })
+
+
 @app.route("/runs/automation/start", methods=["POST"])
 def runs_automation_start():
     plant   = request.form.get("plant_source", "").strip()
-    autodir = request.form.get("incoming_folder", "").strip()
-    if not plant or not autodir:
-        return redirect(url_for("runs", run_error="Plant and incoming folder are required."))
-    if not os.path.isdir(autodir):
+    autodir = request.form.get("incoming_folder", "").strip() or str(dirs['incoming'])
+    if not plant:
+        return redirect(url_for("runs", run_error="Plant is required."))
+    if not _within_browse_root(autodir) or not os.path.isdir(autodir):
         return redirect(url_for("runs", run_error=f"Incoming folder not found: {autodir}"))
 
     if not _launch_routine('automation', plant, runAutomation, autodir=autodir):
