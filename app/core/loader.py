@@ -503,7 +503,7 @@ def migrate_schema(conn):
 
 
 def sql_setup(conn):
-    #migrate_schema(conn)
+    migrate_schema(conn)
     cur = conn.cursor()
     cur.execute("""
     CREATE TABLE IF NOT EXISTS waterfall (
