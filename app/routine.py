@@ -4,11 +4,12 @@ from glob import glob
 from datetime import datetime
 
 from app.core.common import preformat_plant
-from app.prefixe import dirs, raw_dir, plant_key
+from app.prefixe import dirs, raw_dir, plant_key, Path
 from app.core.loader import (
-    create_connection, 
+    create_connection,
     autoConsumption, autoWaterfall
 )
+from app.core.parser import ictrans_filename, custDemand_filename
 
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
@@ -16,6 +17,8 @@ from app.reporting.history_report import error_report
 from app.core.run_logger import RunLogger
 
 DATA_TYPES = ['Consumption', 'Waterfall', 'Cost']
+# Extract filename each automated data type looks for in the incoming folder
+EXTRACT_FILENAMES = {'Consumption': ictrans_filename, 'Waterfall': custDemand_filename}
 DEFAULT_CONFIG = {'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0}
 DEFAULT_LOOKAHEAD_WEEKS = 4
 
@@ -48,9 +51,10 @@ def select_best_config(plant, default=None):
     return best_config
 
 
-def runAutomation(plant, autodir, archive_dir, title=None):
+def runAutomation(plant, autodir, archive_dir=None, title=None):
     plant = preformat_plant(plant)
-    archive_dir = raw_dir(plant, data_type)
+    autodir = Path(autodir)
+    archive_dir = Path(archive_dir) if archive_dir else raw_dir(plant)
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     report_dir = dirs['reports']
@@ -83,7 +87,14 @@ def runAutomation(plant, autodir, archive_dir, title=None):
             for data_type in DATA_TYPES:
                 step_name = f'Load {data_type}'
 
-                items_to_move = []
+                extract_name = EXTRACT_FILENAMES.get(data_type)
+                if extract_name is None:
+                    run.skip(step_name, f'{data_type} loading is not automated')
+                    continue
+                if not (autodir / extract_name(plant)).exists():
+                    run.skip(step_name, f'No {extract_name(plant)} in {autodir}')
+                    continue
+
                 with run.step(step_name) as rec:
                     # for filepath in files:
                     #     shutil.copy(filepath, dest_dir / os.path.basename(filepath))
@@ -103,13 +114,13 @@ def runAutomation(plant, autodir, archive_dir, title=None):
                     archive_dest = os.path.join(archive_dir, data_type)
                     os.makedirs(archive_dest, exist_ok=True)
                     
+                    src = autodir / plant_file
                     if title:
                         archive_name = title
                     else:
-                        ctime = os.path.getctime(plant_file)
-                        dt = datetime.fromtimestamp(ctime)
-                        archive_name = f"{dt.isocalendar().year}wk{dt.isocalendar().week}"
-                    shutil.move(plant_file, os.path.join(archive_dest, archive_name))
+                        dt = datetime.fromtimestamp(os.path.getctime(src))
+                        archive_name = f"{dt.isocalendar().year}wk{dt.isocalendar().week:02d}{src.suffix}"
+                    shutil.move(src, os.path.join(archive_dest, archive_name))
 
                     rec['message'] = f'{data_type} loaded and archived'
 
@@ -134,7 +145,7 @@ def runAutomation(plant, autodir, archive_dir, title=None):
                 rec['message'] = f'{len(train_df):,} training rows'
 
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            model_name = f"{plant}_{current_year}wk{current_week:02d}_{ts}"
+            model_name = f"{plant_key.get(plant, plant)}_{current_year}wk{current_week:02d}_{ts}"
             with run.step('Save model') as rec:
                 save_model(bundle, model_name)
                 rec['message'] = f'{model_name}.pkl'
@@ -159,9 +170,6 @@ def runAutomation(plant, autodir, archive_dir, title=None):
         raise
 
 
-def main():
-    for plant in plant_key.keys():
-        runAutomation(plant, autodir=)
 
 if __name__ == '__main__':
     import argparse
@@ -169,7 +177,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Weekly load / retrain / predict routine.")
     parser.add_argument('incoming_folder', help="Folder to check for new data files (with Consumption/Waterfall/Cost subfolders).")
     parser.add_argument('plant', help="Plant source, e.g. Arlington or Hermasillo.")
-    parser.add_argument('archive_folder', help="Folder to move processed files into.")
+    parser.add_argument('archive_folder', nargs='?', default=None,
+                        help="Folder to move processed files into (default: data/<plant>).")
     args = parser.parse_args()
 
-    main(args.incoming_folder, args.plant, args.archive_folder)
+    runAutomation(args.plant, args.incoming_folder, args.archive_folder)

@@ -126,7 +126,35 @@
   .step-status-running  { background: var(--blue-pale); color: var(--blue); }
   .step-msg { color: var(--text-muted); font-family: monospace; word-break: break-word; }
   .step-msg.step-msg-error { color: #b71c1c; }
+
+  .launch-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    max-width: 780px;
+  }
+  .launch-card {
+    flex: 1;
+    min-width: 300px;
+    padding: 1rem 1.25rem;
+  }
+  .launch-card form { display: flex; flex-direction: column; gap: 8px; }
+  .launch-card label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .launch-title { font-weight: 700; font-size: 14px; color: var(--text); }
+  .run-script {
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 6px;
+  }
 </style>
+{% if any_running %}
+<!-- refresh while a run is in progress so its steps fill in -->
+<meta http-equiv="refresh" content="10" />
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -144,6 +172,52 @@
   </div>
 </div>
 
+<div class="launch-row">
+  <div class="card launch-card">
+    <form method="post" action="{{ url_for('runs_automation_start') }}">
+      <div class="launch-title">Run automation</div>
+      <div class="help-text">Load new extracts from the incoming folder, retrain, and save predictions
+        (same as <code>routine.py</code>).</div>
+      <label>Plant
+        <select name="plant_source">
+          {% for p in plant_sources %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Incoming folder
+        <input type="text" name="incoming_folder" required placeholder="path containing the plant's extracts" />
+      </label>
+      <div class="action-row">
+        <button type="submit" class="btn-run">Run Automation</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card launch-card">
+    <form method="post" action="{{ url_for('runs_optimize_start') }}">
+      <div class="launch-title">Optimize hyperparameters</div>
+      <div class="help-text">Random search scored over rolling holdout weeks. The best config is saved
+        as a model, so the next automation run will reuse it if it scores best.</div>
+      <label>Plant
+        <select name="plant_source">
+          {% for p in plant_sources %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Trials
+        <input type="number" name="n_trials" min="1" max="200" value="{{ default_trials }}" style="max-width:80px;" />
+      </label>
+      <div class="action-row">
+        <button type="submit" class="btn-run">Run Optimization</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if run_result %}
+  <span class="result-banner">✔ {{ run_result }}</span>
+{% elif run_error %}
+  <span class="error-banner">✖ {{ run_error }}</span>
+{% endif %}
+
 <br style="margin-top: 20px">
 
 {% if runs %}
@@ -152,6 +226,7 @@
     <div class="run-header">
       <div class="run-meta">
         <span class="run-plant">{{ r.plant | title }}</span>
+        <span class="run-script">{{ r.script or 'routine.py' }}</span>
         <span class="run-time">{{ r.started_at }}</span>
         <span class="run-elapsed">⏱ {{ r.elapsed_str }}</span>
         <span class="run-id">{{ r.run_id }}</span>
@@ -210,7 +285,7 @@
 {% else %}
 <div class="card">
   <p style="color:var(--text-muted,#888); font-style:italic;">
-    No runs recorded yet. Run <code>python app/routine.py &lt;incoming_folder&gt; &lt;plant_source&gt; &lt;archive_folder&gt;</code>
+    No runs recorded yet. Use the buttons above, or run <code>python -m app.routine &lt;incoming_folder&gt; &lt;plant_source&gt;</code>
     to see it appear here.
   </p>
 </div>

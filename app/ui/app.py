@@ -19,9 +19,11 @@ from app.models.train import model_train, save_model, load_model, predict_from_b
 from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.core.run_logger import list_runs
+from app.routine import runAutomation
+from app.optimize import runOptimization, DEFAULT_TRIALS
 import sqlite3
 from app import prefixe
-from app.prefixe import dirs, raw_dir, PLANT_SOURCES, pre
+from app.prefixe import dirs, raw_dir, PLANT_SOURCES, pre, plant_key
 
 # !!!! Run from command line with "python app/ui/app.py" from project root
 
@@ -68,6 +70,7 @@ def _run_training_job(job_id: str, params: dict):
             max_orderidx=params.get('max_oi'),
             progress_cb=wf_progress,
         )
+        print("FINISHED TRAINING ")
         conn.close()
 
         if df.empty:
@@ -96,7 +99,7 @@ def _run_training_job(job_id: str, params: dict):
         nickname = params['nickname']
         if not nickname:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            nickname = f"{params['plant']}_{params.get('model_type')}_{ts}"
+            nickname = f"{plant_key[params['plant']]}_{params.get('model_type')}_{ts}"
 
         saved_path = save_model(bundle, nickname)
         elapsed = round(time.time() - job['started'])
@@ -241,28 +244,23 @@ def load():
         elif not files:
             error = "No files selected."
         else:
-            bad = [os.path.basename(f.filename) for f in files
-                   if not _NAME_RE.match(os.path.basename(f.filename))]
-            if bad:
-                error = f"Invalid filename(s): {', '.join(bad)}. Expected format: 2026wk01.prn"
-            else:
-                dest_dir = raw_dir(plant_source, data_type)
-                print(dest_dir)
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                for f in files:
-                    f.save(dest_dir / os.path.basename(f.filename))
-                try:
-                    conn = create_connection(plant=plant_source.lower())
-                    if data_type == "Consumption":
-                        consumption_to_sql(conn, dest_dir)
-                    elif data_type == "Waterfall":
-                        waterfall_to_sql(conn, dest_dir)
-                    elif data_type == "Cost":
-                        cost_to_sql(conn, dest_dir)
-                    conn.close()
-                    result = f"Saved and processed {len(files)} file(s) → {plant_source}/raw/{data_type}."
-                except Exception as e:
-                    error = str(e)
+            dest_dir = raw_dir(plant_source, data_type)
+            print(dest_dir)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            for f in files:
+                f.save(dest_dir / os.path.basename(f.filename))
+            try:
+                conn = create_connection(plant=plant_source.lower())
+                if data_type == "Consumption":
+                    consumption_to_sql(conn, dest_dir)
+                elif data_type == "Waterfall":
+                    waterfall_to_sql(conn, dest_dir)
+                elif data_type == "Cost":
+                    cost_to_sql(conn, dest_dir)
+                conn.close()
+                result = f"Saved and processed {len(files)} file(s) → {plant_source}/raw/{data_type}."
+            except Exception as e:
+                error = str(e)
 
     return render_template("load.html", active="load", result=result, error=error,
                            plant_sources=PLANT_SOURCES)
@@ -521,8 +519,69 @@ def _format_run(run):
 
 @app.route("/runs")
 def runs():
+    formatted = [_format_run(r) for r in list_runs()]
     return render_template("runs.html", active="runs",
-                           runs=[_format_run(r) for r in list_runs()])
+                           runs=formatted,
+                           any_running=any(r['status'] == 'running' for r in formatted),
+                           plant_sources=PLANT_SOURCES,
+                           default_trials=DEFAULT_TRIALS,
+                           run_result=request.args.get("run_result"),
+                           run_error=request.args.get("run_error"))
+
+
+# Manually launched routine.py / optimize.py runs. They record their own
+# progress through RunLogger, so the Run History page is the status view.
+_ACTIVE_ROUTINES: dict = {}   # (kind, plant) → Thread
+
+def _launch_routine(kind: str, plant: str, target, **kwargs) -> bool:
+    """Start `target` in a background thread unless the same kind of run is
+    already going for this plant. Returns False if one is already running."""
+    key = (kind, plant.lower())
+    existing = _ACTIVE_ROUTINES.get(key)
+    if existing is not None and existing.is_alive():
+        return False
+
+    def _wrapped():
+        try:
+            target(plant, **kwargs)
+        except Exception:
+            # RunLogger has already recorded the failed step for the UI
+            import traceback
+            traceback.print_exc()
+
+    thread = threading.Thread(target=_wrapped, daemon=True)
+    _ACTIVE_ROUTINES[key] = thread
+    thread.start()
+    return True
+
+
+@app.route("/runs/automation/start", methods=["POST"])
+def runs_automation_start():
+    plant   = request.form.get("plant_source", "").strip()
+    autodir = request.form.get("incoming_folder", "").strip()
+    if not plant or not autodir:
+        return redirect(url_for("runs", run_error="Plant and incoming folder are required."))
+    if not os.path.isdir(autodir):
+        return redirect(url_for("runs", run_error=f"Incoming folder not found: {autodir}"))
+
+    if not _launch_routine('automation', plant, runAutomation, autodir=autodir):
+        return redirect(url_for("runs", run_error=f"An automation run for {plant} is already in progress."))
+    return redirect(url_for("runs", run_result=f"Started automation run for {plant}."))
+
+
+@app.route("/runs/optimize/start", methods=["POST"])
+def runs_optimize_start():
+    plant = request.form.get("plant_source", "").strip()
+    try:
+        n_trials = int(request.form.get("n_trials", DEFAULT_TRIALS) or DEFAULT_TRIALS)
+        if not plant or n_trials < 1:
+            raise ValueError("Plant and a positive number of trials are required.")
+    except ValueError as exc:
+        return redirect(url_for("runs", run_error=str(exc)))
+
+    if not _launch_routine('optimize', plant, runOptimization, n_trials=n_trials):
+        return redirect(url_for("runs", run_error=f"An optimization run for {plant} is already in progress."))
+    return redirect(url_for("runs", run_result=f"Started hyperparameter search for {plant} ({n_trials} trials)."))
 
 
 # ── DATA / Reports ────────────────────────────────────────────────────────────

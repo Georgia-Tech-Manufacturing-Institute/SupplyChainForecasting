@@ -71,6 +71,11 @@ class RunLogger:
             rec['finished_at'] = _now()
             self._save()
 
+    def progress(self, rec, message):
+        """Update a running step's message mid-step (e.g. trial 3/20)."""
+        rec['message'] = message
+        self._save()
+
     def skip(self, name, message=''):
         self.steps.append({'name': name, 'status': 'skipped', 'message': message,
                             'started_at': _now(), 'finished_at': _now()})

@@ -152,6 +152,10 @@ def make_model(config: dict):
         return HistGradientBoostingRegressor(
             loss=config.get('loss', 'absolute_error'),
             l2_regularization=config.get('l2', 1.0),
+            learning_rate=config.get('learning_rate', 0.1),
+            max_iter=config.get('max_iter', 100),
+            max_leaf_nodes=config.get('max_leaf_nodes', 31),
+            min_samples_leaf=config.get('min_samples_leaf', 20),
         )
     if mtype == 'rf':
         return RandomForestRegressor(
