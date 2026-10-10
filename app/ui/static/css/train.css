@@ -182,3 +182,91 @@
   word-break: break-all;
   opacity: .85;
 }
+
+/* ── exclusion week picker ───────────────────────────────── */
+.btn-secondary {
+  background: var(--white);
+  color: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 16px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: var(--blue-row); }
+.excl-form-summary {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.excl-dialog {
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0,0,0,.25);
+  background: var(--white);
+  color: var(--text);
+}
+.excl-dialog::backdrop { background: rgba(26, 42, 58, .45); }
+.excl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.excl-title { font-size: 17px; font-weight: 600; color: var(--navy); }
+.excl-scope-label { font-size: 13px; color: var(--text-muted); }
+.excl-scope-label select { margin-left: 6px; }
+.excl-help {
+  margin: 8px 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Toggleable tiles: excluded overrides the coverage shade (declared after the
+   data-level rules in styles.css, same specificity, so it wins) */
+.excl-dialog .hm-cell[data-toggle="1"] { cursor: pointer; }
+.excl-dialog .heatmap-grid { user-select: none; }
+/* keep the week numbers aligned with the tiles when a narrow dialog scrolls the grid */
+.excl-dialog .heatmap-week-label { flex-shrink: 0; }
+.hm-cell[data-state="excluded"] {
+  background: var(--error-border);
+  box-shadow: inset 0 0 0 1px #9b1c1a;
+}
+.hm-cell[data-state="inherited"] {
+  background: repeating-linear-gradient(135deg, var(--error-border) 0 2px, #f6c4c2 2px 4px);
+  cursor: not-allowed;
+}
+.excl-year { cursor: pointer; }
+.excl-year:hover { color: var(--navy); text-decoration: underline; }
+
+.excl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.excl-key { display: inline-flex; align-items: center; gap: 6px; }
+.excl-summary {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.excl-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.excl-spacer { flex: 1; }

@@ -46,15 +46,45 @@ def merge_features(consumption, waterfall, cost):
 
     merged = acc_features(merged)
     merged = id_group_counts(merged) # per part number counts by
-    return merged 
+    return merged
 
 
+# EXCLUSIONS ----------------------------------------------------------------------------------
+# A run can exclude weeks it shouldn't learn from. Each rule is a dict:
+#   data_type -- 'waterfall' (week_idx is a predidx snapshot) or 'consumption' (an orderidx)
+#   week_idx  -- the week index
+#   part      -- None for every part that week, otherwise a single part
+# Excluded weeks are treated as unusual but real: their rows are dropped from
+# training, but their values still feed later weeks' lag and rolling features.
+# The drop happens after features are built, since the waterfall lags shift by
+# row and would silently bridge a gap dropped beforehand.
+EXCLUDE_WEEK_COLS = {'waterfall': pi, 'consumption': oi}
+
+def match_exclusions(frame, rules, week_col):
+    '''boolean mask of frame rows hit by rules (already narrowed to one data_type)'''
+    hit = frame[week_col].isin(rules.loc[rules.part.isna(), 'week_idx'])
+    per_part = rules.dropna(subset=['part'])
+    if len(per_part):
+        keys = pd.MultiIndex.from_arrays([per_part.part.astype(str), per_part.week_idx])
+        hit |= pd.MultiIndex.from_arrays([frame.part.astype(str), frame[week_col]]).isin(keys)
+    return hit
+
+def drop_excluded_rows(frame, exclusions):
+    '''drop training rows whose snapshot or order week is excluded'''
+    ex = pd.DataFrame(list(exclusions or []), columns=['data_type', 'week_idx', 'part'])
+    drop = pd.Series(False, index=frame.index)
+    for data_type, week_col in EXCLUDE_WEEK_COLS.items():
+        rules = ex[ex.data_type == data_type]
+        if len(rules):
+            drop |= match_exclusions(frame, rules, week_col)
+    return frame[~drop]
 
 
 def build_training_dataset(conn, min_orderidx: int = None,
                            max_orderidx: int = None,
                            remove_nans: bool = True,
-                           progress_cb=None) -> pd.DataFrame:
+                           progress_cb=None,
+                           exclusions: list = None) -> pd.DataFrame:
     """
     Pull waterfall, consumption, and cost from conn and return a
     feature-ready DataFrame suitable for model_train().
@@ -65,6 +95,7 @@ def build_training_dataset(conn, min_orderidx: int = None,
     min_orderidx : earliest order week index to include (default: earliest w/ consumption)
     max_orderidx : latest order week index to include (default: current week)
     remove_nans  : drop rows where orderqty is NaN (True); otherwise fill 0
+    exclusions   : weeks to keep out of training, see EXCLUSIONS above
     """
     wf, cf, cost = pull_data(conn)
     waterfall   = waterfall_features(wf, progress_cb=progress_cb)
@@ -78,6 +109,7 @@ def build_training_dataset(conn, min_orderidx: int = None,
     hi = max_orderidx if max_orderidx is not None else wf[oi].max()
 
     real_data = merged[(merged[oi] < hi) & (merged[oi] >= lo)]
+    real_data = drop_excluded_rows(real_data, exclusions)
     if remove_nans:
         real_data = real_data[~real_data[oq].isna()]
     else:
@@ -127,12 +159,12 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
     aug_pred = []
     for _ in range(aug_lookahead):
         last_pred[oi] = last_pred[oi] + 1
-        aug_pred.append(last_pred.reset_index(drop=True)) 
-    aug_pred = pd.concat(aug_pred, axis=0)
-    # Only keep rows where its actually a big lookahead
-    aug_pred = aug_pred[(aug_pred[oi] - aug_pred[pi])>aug_lookahead]
-
-    wf = pd.concat([wf, aug_pred], axis=0)
+        aug_pred.append(last_pred.reset_index(drop=True))
+    if aug_pred:  # aug_lookahead=0 projects nothing, and concat refuses an empty list
+        aug_pred = pd.concat(aug_pred, axis=0)
+        # Only keep rows where its actually a big lookahead
+        aug_pred = aug_pred[(aug_pred[oi] - aug_pred[pi])>aug_lookahead]
+        wf = pd.concat([wf, aug_pred], axis=0)
 
     waterfall   = waterfall_features(wf)
     consumption = consumption_features(cf)
@@ -146,8 +178,5 @@ def build_prediction_dataset(conn, predidxs=None, aug_lookahead=0) -> pd.DataFra
 
     if len(latest_wf) == 0:
         raise ValueError("Date range returns no predictions")
-
-
-    latest_wf = latest_wf.merge(latest_cost, how='left', on='part')
 
     return latest_wf.reset_index(drop=True)

@@ -76,16 +76,23 @@ def plant_stats(plant):
         conn.close()
 
 
-def get_coverage_counts(plant):
-    """Return (wf_records, cf_records) — distinct part counts per orderidx for each table."""
+def get_coverage_counts(plant, wf_week='orderidx'):
+    """Return (wf_records, cf_records) — distinct part counts per week for each table.
+
+    Consumption is always counted per orderidx. Waterfall defaults to orderidx too
+    (the Load mosaic); pass wf_week='predidx' to count per snapshot instead, which
+    is how waterfall weeks are excluded from training.
+    """
+    if wf_week not in ('orderidx', 'predidx'):
+        raise ValueError(f"wf_week must be 'orderidx' or 'predidx', not {wf_week!r}")
     plant_db = plant.strip().lower() + '.db'
     try:
         #dirs['processed'].mkdir(parents=True, exist_ok=True)
         print(dirs['processed'] / plant_db)
         conn = sqlite3.connect(dirs['processed'] / plant_db)
         wf = pd.read_sql_query(
-            "SELECT orderidx, COUNT(DISTINCT part) AS count "
-            "FROM waterfall_agg GROUP BY orderidx ORDER BY orderidx",
+            f"SELECT {wf_week} AS orderidx, COUNT(DISTINCT part) AS count "
+            f"FROM waterfall_agg GROUP BY {wf_week} ORDER BY {wf_week}",
             conn,
         )
         cf = pd.read_sql_query(

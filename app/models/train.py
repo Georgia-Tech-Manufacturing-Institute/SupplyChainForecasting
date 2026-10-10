@@ -11,6 +11,7 @@ from app.prefixe import pre, dirs
 from app.models.estimators import NaNAwareMLPRegressor
 
 pq = pre['pq']
+pi = pre['pi']
 oi = pre['oi']
 oq = pre['oq']
 
@@ -252,6 +253,12 @@ def model_train(df: pd.DataFrame,
         'feature_cols': list(X_valid.columns),
         'scale_config': scale_config,
         'part_max_oq': part_max_oq,
+        # Every week that actually contributed a training row -- train_span alone
+        # hides gaps left by excluded or missing weeks
+        'train_weeks': {
+            oi: sorted(int(w) for w in df_valid.loc[train_idx, oi].unique()),
+            pi: sorted(int(w) for w in df_valid.loc[train_idx, pi].unique()),
+        },
     }
 
     if holdout_weeks > 0:

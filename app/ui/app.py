@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file
 import subprocess
+import json
 import os
 import sys
 import threading
@@ -70,6 +71,7 @@ def _run_training_job(job_id: str, params: dict):
             min_orderidx=params.get('min_oi'),
             max_orderidx=params.get('max_oi'),
             progress_cb=wf_progress,
+            exclusions=params['exclusions']['rules'],
         )
         print("FINISHED TRAINING ")
         conn.close()
@@ -93,6 +95,9 @@ def _run_training_job(job_id: str, params: dict):
                                      'scale_features': params.get('scale_features', False),
                                      'qty_scale_col':  params.get('qty_scale_col', 'predqty_max'),
                                      'wk_divisor':     params.get('wk_divisor', 52.0)})
+
+        # Raw field text alongside the expanded rules, so Retrain can refill the form
+        bundle['exclusions'] = params['exclusions']
 
         report('training_b', 'Fitting Model B (predqty ≤ 1)…')
 
@@ -146,6 +151,37 @@ import re
 def parse_week_to_idx(week):
     m = re.fullmatch(r"(\d{4})-W(\d{2})", week)
     return week_to_idx(int(m.group(1)), int(m.group(2)))
+
+
+def parse_exclusions(text, data_type):
+    """Parse a Train-form exclusion field into rules for build_training_dataset.
+
+    Comma-separated tokens, each a week or an inclusive range, optionally
+    scoped to one part with a 'PART:' prefix:
+        2025-W52, 2026-W01..2026-W03, 2026-W05..W07, 1234-567:2026-W10
+    """
+    rules = []
+    for token in (t.strip() for t in (text or '').split(',')):
+        if not token:
+            continue
+        part, _, weeks = token.rpartition(':')
+        start, _, end = weeks.strip().partition('..')
+        start = start.strip()
+        end = end.strip()
+        if re.fullmatch(r"W\d{2}", end):          # '2026-W05..W07' shorthand
+            end = start[:5] + end
+        try:
+            lo = parse_week_to_idx(start)
+            hi = parse_week_to_idx(end) if end else lo
+        except AttributeError:
+            raise ValueError(f"Can't read excluded {data_type} week {token!r}; "
+                             f"use YYYY-Www, YYYY-Www..YYYY-Www, or PART:YYYY-Www")
+        if hi < lo:
+            raise ValueError(f"Excluded {data_type} range {token!r} ends before it starts")
+        rules += [{'data_type': data_type, 'week_idx': w,
+                   'part': part.strip() or None}
+                  for w in range(lo, hi + 1)]
+    return rules
 
 
 
@@ -442,6 +478,7 @@ def model_retrain_config(name):
 
     cfg = bundle.get('config', {}) or {}
     scale_cfg = bundle.get('scale_config') or {}
+    excl = bundle.get('exclusions') or {}
     span = bundle.get('train_span')
 
     def _iso_week(idx):
@@ -473,6 +510,8 @@ def model_retrain_config(name):
         'scale_features':      bool(bundle.get('scale_config')),
         'qty_scale_col':       scale_cfg.get('qty_scale_col', 'predqty_max'),
         'wk_divisor':          scale_cfg.get('wk_divisor', 52),
+        'exclude_consumption': excl.get('consumption', ''),
+        'exclude_waterfall':   excl.get('waterfall', ''),
         'other_scale':         scale_cfg.get('other_scale') or '',
     })
 
@@ -909,6 +948,71 @@ def retrain():
                            models=_list_models(), plant_sources=PLANT_SOURCES)
 
 
+# Whole-week exclusions picked in the Train page's week picker, remembered across
+# sessions. One entry per scope -- 'all' (every plant) or a lowercase plant name --
+# each {'consumption': [orderidx, ...], 'waterfall': [predidx, ...]}. A plant's
+# effective exclusions are its own plus the 'all' entry; the Train form expands
+# them into its text fields, so training itself never reads this file.
+EXCLUSION_SETTINGS_PATH = dirs['data'] / 'training_exclusions.json'
+EXCLUSION_TYPES = ('consumption', 'waterfall')
+
+def _exclusion_scopes():
+    return {'all', *(p.lower() for p in PLANT_SOURCES)}
+
+def load_exclusion_settings():
+    try:
+        with open(EXCLUSION_SETTINGS_PATH) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_exclusion_settings(raw):
+    """Validate and persist the picker's settings; returns what was saved."""
+    if not isinstance(raw, dict):
+        raise ValueError("Expected an object keyed by plant")
+    clean = {}
+    for scope, weeks in raw.items():
+        if scope not in _exclusion_scopes():
+            raise ValueError(f"Unknown plant {scope!r}")
+        entry = {t: sorted({int(w) for w in (weeks or {}).get(t, [])}) for t in EXCLUSION_TYPES}
+        if any(entry.values()):
+            clean[scope] = entry
+    EXCLUSION_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = EXCLUSION_SETTINGS_PATH.with_suffix('.json.tmp')
+    with open(tmp, 'w') as f:
+        json.dump(clean, f, indent=1)
+    os.replace(tmp, EXCLUSION_SETTINGS_PATH)
+    return clean
+
+
+@app.route("/exclusions/settings", methods=["GET", "POST"])
+def exclusion_settings():
+    if request.method == "GET":
+        return jsonify(load_exclusion_settings())
+    try:
+        return jsonify(save_exclusion_settings(request.get_json(silent=True)))
+    except (ValueError, TypeError) as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route("/exclusions/coverage/<scope>")
+def exclusion_coverage(scope):
+    """Week mosaic data for the picker, keyed the way exclusions are: waterfall
+    by snapshot week (predidx), consumption by order week. 'all' sums the plants."""
+    if scope not in _exclusion_scopes():
+        return jsonify({"error": "Unknown plant"}), 404
+    plants = [p.lower() for p in PLANT_SOURCES] if scope == 'all' else [scope]
+    # sqlite would create an empty database for a plant with no data yet
+    plants = [p for p in plants if (dirs['processed'] / f'{p}.db').exists()]
+    totals = {'wf': {}, 'cf': {}}
+    for plant in plants:
+        for key, records in zip(('wf', 'cf'), get_coverage_counts(plant, wf_week='predidx')):
+            for r in records:
+                totals[key][r['idx']] = totals[key].get(r['idx'], 0) + r['count']
+    return jsonify({key: [{'idx': i, 'count': c} for i, c in sorted(counts.items())]
+                    for key, counts in totals.items()})
+
+
 @app.route("/retrain/start", methods=["POST"])
 def retrain_start():
     earliest_order = request.form.get("earliest_order_date", "").strip()
@@ -935,6 +1039,13 @@ def retrain_start():
             'qty_scale_col':           request.form.get("qty_scale_col", "predqty_max").strip(),
             'wk_divisor':              float(request.form.get("wk_divisor", 52) or 52),
             'other_scale': request.form.get("other_scale") or None,
+        }
+        exclude_text = {t: request.form.get(f"exclude_{t}", "").strip()
+                        for t in ('consumption', 'waterfall')}
+        params['exclusions'] = {
+            **exclude_text,
+            'rules': [r for t, text in exclude_text.items()
+                      for r in parse_exclusions(text, t)],
         }
     except Exception as exc:
         return jsonify({'error': str(exc)}), 400
