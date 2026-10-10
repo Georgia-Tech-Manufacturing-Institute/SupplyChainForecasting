@@ -27,24 +27,8 @@ def cast_to_into(series, to_int=True):
     floated =  series.str.replace(',', '').astype(float)
     return floated.astype(int) if to_int else floated
 
-
-def read_waterfall_week(year=None, week=None, idx=None, proc_dir=None):
-    '''
-    Loads a single week (Predidx) of processed waterfall data; uses year and week, otherwise uses idx
-    '''
-    if proc_dir is None:
-        proc_dir = dirs['processed'] / 'Waterfall'
-    if year is None or week is None:
-        if idx is None:
-            raise ValueError("Must provide either year and week, or idx")
-        year, week = idx_to_week(idx)
-    filename = f"{year}wk{week:02d}.parquet"
-    filepath = proc_dir / filename
-    if not filepath.exists():
-        return None
-    return pd.read_parquet(filepath)
-
 def parse_file_convention(filename, pattern=r'(\d+)wk(\d{2})'):
+    # parses file convention expecting YYYYwkWW as 2026wk01
     pattern = re.compile(pattern,re.IGNORECASE)
     m = re.search(pattern, filename)
     if m:
@@ -53,21 +37,6 @@ def parse_file_convention(filename, pattern=r'(\d+)wk(\d{2})'):
     else:
         raise ValueError("Filename does not match expected pattern")
 
-
-def read_waterfall_span(idx_start=None, idx_end=None, proc_dir=None):
-    ''' Loads a span of processed waterfall data based on prediction week (Predidx) ; 
-        week is INCLUSIVE'''
-    if proc_dir is None:
-        proc_dir = dirs['processed'] / 'Waterfall'
-    data = []
-    for idx in range(idx_start, idx_end+1):
-        yr, wk = idx_to_week(idx) 
-        week_data = read_waterfall_week(year=yr, week=wk, proc_dir=proc_dir)
-        if week_data is not None:
-            data.append(week_data)
-    wf = pd.concat(data, ignore_index=True)
-    #wf = wf.drop_duplicates(subset=['Part', 'RelDate', 'Orderidx'])
-    return wf
 
 def filter_SQL(conn, idx_start=None, idx_end=None, table='waterfall_agg', aug=False):     
     # aug:  whether augmented rows only
