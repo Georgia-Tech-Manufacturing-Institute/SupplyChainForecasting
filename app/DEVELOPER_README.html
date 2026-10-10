@@ -115,7 +115,8 @@ svg .ahm { fill: var(--muted); }
   <section class="part" id="assumptions">
     <h2>1. Model assumptions</h2>
     <p>The week is the smallest unit of time. A week of actuals counts as complete only when every one of its days is present. Until then it is held back and is not available to train on.</p>
-    <p>Weeks are ISO weeks and are stored as one integer index, <code>year * 52 + week</code> (<code>week_to_idx</code> / <code>make_week_idx</code> in <code>common.py</code>). The ISO year is used rather than the calendar year so that a date such as 12/31 stays in the same week as the rest of its week.</p>
+    <p>Weeks are ISO weeks. Each is stored as one integer index: the number of whole weeks since Monday 2000-01-03, which is ISO 2000-W01. Consecutive weeks always differ by exactly 1, including in 53-week ISO years such as 2026, so lags like <code>orderidx - 4</code> are safe. Use <code>week_to_idx</code> / <code>idx_to_week</code> in <code>common.py</code> to convert. Don't compute an index by hand. The Load and Train page scripts mirror these functions.</p>
+    <p>The ISO year is used rather than the calendar year, so that a date such as 12/31 stays in the same week as the rest of its week.</p>
     <ul>
       <li><code>orderidx</code>: the week a quantity is demanded or consumed.</li>
       <li><code>predidx</code>: the week a forecast was released.</li>
@@ -162,12 +163,16 @@ AT00|L0413592AA02600|07/27/26|41464722|ISS-WO|-10|EA|-10|WIP|524</code></pre>
     <p>A fixed-width report in the diamond-report style. It has a header block (program name, report title, <code>Date:</code>/<code>Page:</code>/<code>Time:</code> lines), a column-header line, a <code>----</code> ruler line, then one row per price-list line. <code>stateParse</code> skips everything before the first ruler and takes column widths from the ruler's dash groups. <strong>The ruler must have exactly one dash group per column</strong>, in this order:</p>
 <pre><code>Line LineDesc List Name Item Number UM ItemDesc PO UM Start Expire T Cur MinQty1 Amt1 MinQty2 Amt2 MinQty3 Amt3 MinQty4 Amt4 MinQty5 Amt5 BaseCurr TotalCost Remarks</code></pre>
     <p>Columns are matched by position, not by header text. The names above are the ones <code>costPrep</code> assigns. For example:</p>
-<pre><code>xxpprp.p                                 Price List Report                                     Date: 04/16/26
-Page:    1                               Arlington                                             Time: 13:16:05
+<pre><code>xxpppcrp01.p 2+                                     34.1.15.16 Item Price Report                                      Date: 01/22/26
+Page:    1                                                    Arlington                                               Time: 13:41:50
 
-Line LineDesc List     Name     Item Number        UM ItemDesc       PO       UM Start    Expire   T Cur MinQty1 Amt1    ...
----- -------- -------- -------- ------------------ -- -------------- -------- -- -------- -------- - --- ------- ------- ...
-1    ...      ...      ...      84824532           EA ...            ...      EA 01/05/26 12/31/26 P USD     1.0   12.50 ...</code></pre>
+
+                                                                                                                                          PC                                                                                                                                                  Price
+Line Line Desc                List     Name                         Item Number        UM Item Desc                PO                     UM Start    Expire   T Cur Min Qty[1]   Amount[1] Min Qty[2]   Amount[2] Min Qty[3]   Amount[3] Min Qty[4]   Amount[4] Min Qty[5]   Amount[5]   Base Curr      Total Cost Remarks
+---- ------------------------ -------- ---------------------------- ------------------ -- ------------------------ ---------------------- -- -------- -------- - --- ---------- ----------- ---------- ----------- ---------- ----------- ---------- ----------- ---------- ----------- ----------- --------------- ----------
+2610 GM BOLT C121 DOOR PANEL  01000474 GMCCA 1589                   42908821           EA DR FRT LH BZC CHEVY BASE                        EA 09/19/25          P USD          0     92.0592          0        0.00          0        0.00          0        0.00          0        0.00     92.0592         52.0252
+
+</code></pre>
     <p>After <code>costPrep</code>, three columns remain, one row per part:</p>
     <div class="tbl"><table>
       <tr><th>column</th><th>source field</th><th>notes</th></tr>
@@ -324,7 +329,7 @@ Line LineDesc List     Name     Item Number        UM ItemDesc       PO       UM
       </section>
       <section>
         <h3>Schema version</h3>
-        <p><code>SCHEMA_VERSION = 1</code> moved the old pre-aggregated <code>consumption</code> into <code>consumption_agg</code>. The <code>migrate_schema()</code> call in <code>sql_setup()</code> is currently commented out, so a v0 database opened now keeps its old <code>consumption</code> table.</p>
+        <p><code>sql_setup()</code> runs <code>migrate_schema()</code>, which upgrades older databases in place. Version 1 moved the old pre-aggregated <code>consumption</code> into <code>consumption_agg</code>. Version 2 re-encoded every week index from <code>year * 52 + week</code> to weeks since 2000-01-03. It dropped rows stored at old index <code>105405</code>, where 2026-W53 and 2027-W01 had been merged.</p>
       </section>
     </div>
   </section>

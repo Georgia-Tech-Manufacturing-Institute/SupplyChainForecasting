@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pandas as pd
 from app.prefixe import pre
+from app.core.common import idx_iso_week
 
 pi = pre['pi']
 oi = pre['oi']
@@ -233,10 +234,11 @@ def relative_magnitude_features(df):
 def seasonal_index_features(df, idx_col):
     """Week-of-year and fiscal quarter derived from a week-index column."""
     df = df.copy()
-    week_of_year = df[idx_col] % 52
+    week_of_year = idx_iso_week(df[idx_col])        # 1..53
     df[f'{idx_col}_woy'] = week_of_year
-    df[f'{idx_col}_quarter'] = week_of_year // 13
-    df[f'{idx_col}_woq'] = week_of_year - df[f'{idx_col}_quarter']*13
+    # 13-week quarters; week 53 folds into Q4 as its 14th week
+    df[f'{idx_col}_quarter'] = ((week_of_year - 1) // 13).clip(upper=3)
+    df[f'{idx_col}_woq'] = week_of_year - 1 - df[f'{idx_col}_quarter']*13
     return df
 
 

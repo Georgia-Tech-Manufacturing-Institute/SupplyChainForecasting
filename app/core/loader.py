@@ -443,7 +443,7 @@ def load_to_sql(conn, table, df):
 
 
 # Bump this whenever a migration is appended to MIGRATIONS below.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Number of distinct calendar dates an ISO week must show in the landing table
 # before it is considered closed and safe to aggregate.
@@ -482,9 +482,73 @@ def _migrate_v1_consumption_landing(conn):
         conn.execute("ALTER TABLE consumption RENAME TO consumption_agg")
 
 
+# Every stored week-index column, as (table, column).
+WEEK_IDX_COLUMNS = [('waterfall', 'orderidx'), ('waterfall', 'predidx'),
+                    ('waterfall_agg', 'orderidx'), ('waterfall_agg', 'predidx'),
+                    ('consumption', 'orderidx'), ('consumption_agg', 'orderidx'),
+                    ('loaded_files', 'week_idx')]
+
+
+def v1_idx_to_week(old):
+    '''Decodes a pre-v2 week index (year*52 + week, week 1..52) to ISO
+    (year, week). A 53-week year's W53 encoded to the same value as the next
+    year's W01, so those values decode as W01 -- see v1_ambiguous_idx.'''
+    year = (old - 1) // 52
+    return year, old - 52 * year
+
+
+def v1_ambiguous_idx(years):
+    '''Pre-v2 values that stood for two different ISO weeks (year-W53 and
+    next-year-W01), for each 53-week ISO year in `years`.'''
+    return {y * 52 + 53 for y in years if date(y, 12, 28).isocalendar()[1] == 53}
+
+
+def _migrate_v2_week_index(conn):
+    '''
+    v1 -> v2. Week indices change from year*52+week to ISO weeks since
+    common.WEEK_EPOCH, which stays one-to-one across 53-week ISO years.
+
+    Rows stored under an ambiguous v1 value (2026-W53 and 2027-W01 both became
+    105405) are deleted, not remapped: the landing tables kept whichever week
+    arrived first and waterfall_agg summed the two, so neither week can be
+    recovered from them. Later extracts re-land those weeks correctly.
+    '''
+    cols = [(t, c) for t, c in WEEK_IDX_COLUMNS if table_exists(conn, t)]
+    olds = set()
+    for t, c in cols:
+        olds |= {r[0] for r in conn.execute(
+            f"SELECT DISTINCT {c} FROM {t} WHERE {c} IS NOT NULL")}
+    if not olds:
+        return  # fresh or empty database
+    if max(olds) < 50_000:
+        return  # already v2 numbering (v1 values are all > 2000*52)
+
+    years = range(v1_idx_to_week(min(olds))[0] - 1, v1_idx_to_week(max(olds))[0] + 1)
+    ambiguous = v1_ambiguous_idx(years) & olds
+    for t, c in cols:
+        for old in ambiguous:
+            n = conn.execute(f"DELETE FROM {t} WHERE {c} = ?", (old,)).rowcount
+            if n:
+                print(f"     v2 migration: dropped {n} {t} rows with ambiguous "
+                      f"{c} {old} ({v1_idx_to_week(old)[0] - 1}-W53 / "
+                      f"{v1_idx_to_week(old)[0]}-W01)")
+
+    # Every v2 value is far below every v1 value, so updating in place can
+    # never trip a UNIQUE key on a half-converted row.
+    conn.execute("CREATE TEMP TABLE week_idx_map (old INT PRIMARY KEY, new INT)")
+    conn.executemany("INSERT INTO week_idx_map VALUES (?, ?)",
+                     [(o, week_to_idx(*v1_idx_to_week(o))) for o in olds - ambiguous])
+    for t, c in cols:
+        conn.execute(f"""UPDATE {t} SET {c} =
+                         (SELECT new FROM week_idx_map WHERE old = {t}.{c})
+                         WHERE {c} IS NOT NULL""")
+    conn.execute("DROP TABLE week_idx_map")
+
+
 # (version_introduced, migration) -- appended to, never reordered.
 MIGRATIONS = [
     (1, _migrate_v1_consumption_landing),
+    (2, _migrate_v2_week_index),
 ]
 
 

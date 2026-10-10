@@ -11,8 +11,9 @@ from app.core.loader import *
 
 
 def filter_dates(df, min_date: datetime, max_date: datetime):
-    min_idx = week_to_idx(min_date.year, min_date.isocalendar()[1])
-    max_idx = week_to_idx(max_date.year, max_date.isocalendar()[1])
+    # ISO year, not calendar year: 12/31 can belong to week 1 of the next year
+    min_idx = week_to_idx(*min_date.isocalendar()[:2])
+    max_idx = week_to_idx(*max_date.isocalendar()[:2])
     return df[(df[pre['oi']] >= min_idx) & (df[pre['oi']] <= max_idx)]
 
 def filter_lookahead(df, max_lookahead: int):

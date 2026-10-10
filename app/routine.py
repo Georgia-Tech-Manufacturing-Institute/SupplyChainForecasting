@@ -179,7 +179,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description="Weekly load / retrain / predict routine.")
-    parser.add_argument('incoming_folder', help="Folder to check for new data files (with Consumption/Waterfall/Cost subfolders).")
+    parser.add_argument('incoming_folder', help="Folder holding the plant's extracts directly, e.g. AT_ictrans.txt and AT_custdemand.txt.")
     parser.add_argument('plant', help="Plant source, e.g. Arlington or Hermasillo.")
     parser.add_argument('archive_folder', nargs='?', default=None,
                         help="Folder to move processed files into (default: data/<plant>).")

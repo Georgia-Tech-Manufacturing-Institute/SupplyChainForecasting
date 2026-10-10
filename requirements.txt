@@ -1,0 +1,14 @@
+# Python 3.12. Pinned to the versions the tool is developed and tested on.
+# scikit-learn and joblib must match the versions that saved the models in
+# models/saved_models/, or loading those .pkl files can fail.
+Flask==3.1.3
+joblib==1.5.3
+numpy==2.4.6
+openpyxl==3.1.5        # pandas uses it to write the .xlsx reports and predictions
+pandas==3.0.3
+plotly==6.7.0
+scikit-learn==1.8.0
+
+# Optional: only visual_utilities.py (notebook plotting helpers) needs these.
+# matplotlib==3.10.9
+# seaborn==0.13.2

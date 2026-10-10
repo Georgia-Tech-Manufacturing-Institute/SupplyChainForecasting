@@ -173,7 +173,7 @@ def parse_exclusions(text, data_type):
         try:
             lo = parse_week_to_idx(start)
             hi = parse_week_to_idx(end) if end else lo
-        except AttributeError:
+        except (AttributeError, ValueError):     # no match / no such ISO week
             raise ValueError(f"Can't read excluded {data_type} week {token!r}; "
                              f"use YYYY-Www, YYYY-Www..YYYY-Www, or PART:YYYY-Www")
         if hi < lo:

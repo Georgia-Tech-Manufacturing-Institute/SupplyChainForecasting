@@ -20,7 +20,7 @@ plant_key = {'alma': '485',
              'windsor': 'KD'}
 
 _BASE_PLANT_SOURCES = ['Arlington', 
-                       'Hermasillo',
+                       'Hermosillo',
                        'Cottondale',
                        ]
 

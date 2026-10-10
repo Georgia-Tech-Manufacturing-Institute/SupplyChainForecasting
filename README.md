@@ -2,7 +2,7 @@
 # System basics
 
 Major elements:
-- **Forecast App**: a Flask-based web interface (`app/ui/app.py`) that runs on your own computer and opens in a web browser at http://127.0.0.1:5000. Pages: Home, Load, Explore, Predict, Retrain, Evaluate, Reports, Runs, User Guide.
+- **Forecast App**: a Flask-based web interface (`app/ui/app.py`) that runs on your own computer and opens in a web browser at http://127.0.0.1:5000. 
 - **Automation flow** (`app/routine.py`): the weekly load -> retrain -> predict routine. It can be started from the Runs page in the app, or from the command line / Windows Task Scheduler.
 - **Reporting** (`app/reporting/`): order-accuracy (error) reports, data-coverage reports, and model holdout reports.
 - **Per-plant databases**: every plant has its own SQLite database at `data/processed/<plant>.db`, built from raw weekly files stored under `data/<Plant>/<data type>/`.
@@ -29,8 +29,7 @@ The "No" rows matter a lot when moving the tool to another computer; see [Moving
 ## Automated Workflow
 The fundamental workflow for the tool does not involve any manual steps once it is set up:
 
-1. The SCDW folder updates with new data on Tuesdays (?). This includes two files per plant: `ictrans` and `custdemand`. `ictrans` gives all transactions recorded within the past 8 days, while `custdemand` gives the customer waterfall.
-   - TODO: confirm the day/time the SCDW extract lands, and record the full network path of the SCDW folder here.
+1. The SCMDW folder updates with new data on Tuesdays. This includes two files per plant: `ictrans` and `custdemand`. `ictrans` gives all transactions recorded within the past 8 days, while `custdemand` gives the customer waterfall. 
 2. The routine in `app/routine.py` (a Python script, not a bash script) looks in that folder for files named `[plantkey]_ictrans.txt` and `[plantkey]_custdemand.txt`, where the plant key comes from the `plant_key` dictionary in `app/prefixe.py` (e.g. Arlington -> `AT_ictrans.txt`, `AT_custdemand.txt`).
 3. For each run, the routine:
    1. Writes an error report into `reports/<year>wk<week>/`.
@@ -50,7 +49,6 @@ When started from the **Runs** page instead, the incoming folder has to be insid
 
 TODO: how is the weekly run actually triggered on the production machine today (Task Scheduler, someone clicking the Runs page, something else)? See [Step 9](#step-9-optional-schedule-the-weekly-automation) under Moving devices for a Task Scheduler setup.
 
-TODO: `Hermasillo` is spelled differently in `_BASE_PLANT_SOURCES` than in `plant_key` (`hermosillo`), so the automation can't find a plant key for it. One of the two should be changed.
 
 ## Manual reporting
 
@@ -58,15 +56,12 @@ The reporting module exists to provide feedback on the tool itself and model per
 
 - **Order accuracy / ordering history report** (`error_report`): compares historic customer forecasts (waterfall) against what was actually ordered, broken out by how far ahead the forecast was made (lookahead). Use "max lookahead" to limit how far out to look.
 - **Data coverage report** (`coverage_report`): shows which weeks and parts are present in each table, to spot missing weeks.
-- **Model performance report** (`holdout_report`, on the **Evaluate** page): for a given trained model and test dataset, provides diagnostics about past model performance, namely:
-    - accuracy (mean absolute error) compared with a naive baseline
-    - TODO: list the other metrics/plots shown in the holdout report
+- **Model performance report** (`holdout_report`, on the **Evaluate** page): for a given trained model and test dataset, provides diagnostics about past model performance. 
 
 ## Filling missing week data
 Based on the data mosaic shown on the Load page, it may be evident that there is missing info. To manually load data outside of the automation pipeline:
 
-1. Get the file(s) for the missing week(s). Name each file `YYYYwkWW.txt` (or `.prn`), e.g. `2026wk07.txt`; the week number in the name is what the loader uses.
-   - TODO: confirm whether a raw SCDW extract (`AT_ictrans.txt`) can be uploaded on the Load page after just renaming it, or whether it needs converting first.
+1. Get the file(s) for the missing week(s). 
 2. On the **Load** page, select the plant under "Plant Source", choose the "Data Type", and upload the file(s).
 3. Re-check the coverage heatmap on the Load page to confirm the gap is filled.
 4. Retrain (Retrain page, or the next automation run) so the model sees the new data.
@@ -75,6 +70,21 @@ Note that because the week is the smallest unit of time, a week that is only par
 
 # Advanced user flows
 This is stuff that should be left to the professionals (i.e. someone who knows how to roll back a version, at least; see [Rolling back to an older version](#rolling-back-to-an-older-version)). There are a lot of opportunities for things to go wrong, so make a copy of the `data/` and `models/` folders before starting.
+
+## Change the automation path 
+
+`app/routine.py` has no saved setting for where it looks. The incoming folder is passed in each time the routine starts, so you change it wherever the routine is started from. Whichever you use, the new folder must hold the extracts **directly** (e.g. `AT_ictrans.txt`, `AT_custdemand.txt`), not in subfolders.
+
+- **Scheduled task (production):** open **Task Scheduler**, find the plant's task (e.g. `Forecast Tool - Arlington weekly`), right-click -> **Properties** -> **Actions** tab -> select the action -> **Edit...**. Change the quoted folder in **Add arguments**, e.g. `-m app.routine "\\newserver\share\SCDW" Arlington`. Click **OK** twice. There is one task per plant, so repeat for each. Use the full network path, not a mapped drive letter (see [Step 9](#step-9-optional-schedule-the-weekly-automation)).
+- **Command line:** the folder is the first argument:
+  ```
+  python -m app.routine "<new folder>" Arlington
+  ```
+- **Runs page:** pick the folder in the incoming-folder box before starting a run. The page can only browse inside the project's `data/` folder. To change the folder it starts in, edit the `'incoming'` entry in `dirs` in `app/prefixe.py` and restart the app. That entry must still point somewhere inside `data/`, or the Runs page will reject it. A network share can't be used here; use a scheduled task or the command line for those.
+
+Processed files are moved to `data/<plant>/<data type>/` by default. To archive them somewhere else, add a third argument: `python -m app.routine "<incoming folder>" Arlington "<archive folder>"`.
+
+After changing the path, test it: put the week's extracts in the new folder (or wait for the next drop), run the routine once, and check that the **Runs** page shows the load steps as passed rather than skipped. Don't just look for `no_new_data`: that only means the files weren't found.
 
 ## New plant
 Needed: historical data in a known form. Form is either the concatenated diamond reports or the automated warehouse format; the latter is preferred.
@@ -88,7 +98,6 @@ Needed: historical data in a known form. Form is either the concatenated diamond
 5. Confirm the load on the Home page's Plant Sources table (weeks/parts counts) or the Load page's coverage heatmap.
 6. Train a first model for the plant on the Retrain page so the automation has a configuration to start from.
 
-TODO: the Home page "Add Plant" form calls `add_plant()` in `app/prefixe.py`, which currently doesn't save anything (and nothing writes `data/custom_plants.json`). Until that's fixed, add plants by editing `_BASE_PLANT_SOURCES`.
 
 ## Deleting a plant
 Given a plant "ExamplePlant", say we want to remove it and all its data. There is currently no UI action for this — it must be done by hand:
@@ -113,8 +122,11 @@ Feature engineering is a tantalizing method of model improvement. However, there
 - Holdout noise: a single holdout split can swing the error more than a good feature does. Compare features over several rolling origins before concluding a feature helps.
 
 Opportunities for new features (performed by an intern or others):
-- Exogenous features: TODO (e.g. OEM production schedules, holiday/shutdown calendars?)
-- TODO
+- Exogenous features: 
+   - Weather forecasts for plants
+   - Gas prices 
+   - OEM info: production schedules, holiday/shutdown calendars
+
 
 ## Moving devices
 
@@ -131,7 +143,7 @@ Git (the tool that downloads the code from GitHub) **only carries the code**. Th
 | What | How it gets to the new computer |
 |---|---|
 | Code (`app/`, `Dockerfile`, `README.md`, etc.) | Git (Step 3) |
-| `requirements.txt` (the list of Python packages) | Copy by hand or recreate (Step 4). It's currently excluded from Git by accident; see the TODO there. |
+| `requirements.txt` (the list of Python packages) | Git (Step 3) |
 | `data/` folder (raw files + databases) | Copy by hand (Step 6) |
 | `models/` folder (trained models) | Copy or run optimization |
 | `reports/` folder (past outputs) | Copy by hand (Step 6), optional |
@@ -148,10 +160,10 @@ Throughout these steps:
 ### Step 0: Before you start
 
 You will need:
-- [ ] A GitHub account that has access to the `Georgia-Tech-Manufacturing-Institute/SupplyChainForecasting` repository. TODO: who grants access (the repository may be private)? List the contact here.
+- [ ] A GitHub account that has access to the `Georgia-Tech-Manufacturing-Institute/SupplyChainForecasting` repository. Contact Nikki or others to share to new users. 
 - [ ] Permission to install software on the new computer (or someone from IT who can).
 - [ ] Access to the old computer, or a backup of its `data/` and `models/` folders (a USB drive or shared network drive large enough to hold them).
-- [ ] The path to the SCDW folder, if the new computer will run the weekly automation. TODO: record the path here.
+- [ ] The path to the automated data drop folder, if the new computer will run the weekly automation. 
 
 On the **old** computer, close the app first (close its black window, or press Ctrl+C in it), so the databases aren't being written to while you copy them.
 
@@ -205,26 +217,15 @@ On the **old** computer, close the app first (close its black window, or press C
    ```
    **Every remaining command in this guide is run from this folder.** If you open a new Command Prompt later, run that `cd /d ...` line first.
 
-### Step 4: Make sure `requirements.txt` exists
+### Step 4: Check that `requirements.txt` came down
 
-`requirements.txt` lists the Python packages the tool needs. Check whether it came down with the code:
+`requirements.txt` lists the Python packages the tool needs, with exact versions. It comes with the code. Check it's there:
 ```
 dir requirements.txt
 ```
-If it says `File Not Found`, either copy `requirements.txt` from the old computer's project folder into `C:\ForecastTool\SupplyChainForecasting`, or create it:
-1. Run `notepad requirements.txt` and click **Yes** to create a new file.
-2. Paste in exactly:
-   ```
-   Flask==3.1.3
-   joblib==1.4.2
-   numpy==2.4.6
-   pandas==3.0.3
-   plotly==6.0.0
-   scikit_learn==1.9.0
-   ```
-3. Save (**Ctrl+S**) and close Notepad.
+If it says `File Not Found`, the clone in Step 3 didn't finish, or you're in the wrong folder. Re-check Step 3 before going on.
 
-TODO: `requirements.txt` is excluded from Git by the `*.txt` rule in `.gitignore`. Add a line `!requirements.txt` to `.gitignore` and commit the file so this step goes away. (`openpyxl` may also need adding, since predictions are saved as `.xlsx`. Confirm.)
+Don't change the version numbers in it. The `scikit-learn` and `joblib` versions must match the ones the saved models were made with, or the app won't be able to load the models you copy over in Step 6. If you do upgrade them, retrain the models afterwards.
 
 ### Step 5: Create the Python environment and install packages
 
@@ -249,15 +250,13 @@ A "virtual environment" is a private copy of Python just for this tool, so its p
 
 ### Step 6: Copy the data and models from the old computer
 
-1. On the **old** computer, open the project folder in File Explorer. TODO: record where the project folder lives on the current production computer.
+1. On the **old** computer, open the project folder in File Explorer (Current position: User/alakia/SupplyChainForecasting). Optional : You can just use the dropbox backup. 
 2. Copy these folders and files onto a USB drive or shared drive:
    - `data` (required: all plants' raw files and databases)
    - `models` (required: trained models; without them the automation starts from default settings)
    - `reports` (optional: past weekly outputs)
    - `logs` (optional: the history on the Runs page)
    - `.env` (only if you'll run with Docker; it may be hidden, so turn on File Explorer -> View -> Show -> Hidden items)
-   - `requirements.txt` (if you need it for Step 4)
-   - TODO: are `raw_data/` and `recent/` still needed, or were they one-off working folders?
 3. On the **new** computer, paste them into `C:\ForecastTool\SupplyChainForecasting`, so you end up with `C:\ForecastTool\SupplyChainForecasting\data`, `...\models`, etc., right next to the `app` folder. If Windows asks about merging or replacing folders, choose to **replace**.
 4. Check: `C:\ForecastTool\SupplyChainForecasting\data\processed` should contain a `.db` file for each plant (e.g. `arlington.db`), and `models\saved_models` should contain `.pkl` files.
 
@@ -302,7 +301,6 @@ So that nobody needs to type commands to start the tool day to day:
 6. Double-click the shortcut to test it: a black window opens, and a few seconds later the browser opens on the app. If the browser opens before the app is ready, wait a moment and press **F5**.
    - If Windows shows a blue "Windows protected your PC" screen, click **More info** -> **Run anyway**.
 
-TODO: `STARTUP_TROUBLESHOOTING.html` refers to a `Forecast.bat` that isn't in the repository; the file above is a replacement and still needs testing on Windows. Once it's confirmed, commit it to the repo. (Because `.bat` isn't ignored, `git add Forecast.bat` will work.)
 
 ### Step 9 (optional): Schedule the weekly automation
 
@@ -314,7 +312,7 @@ Only do this on the one computer that should process the weekly SCDW files. **Do
    - Name: `Forecast Tool - Arlington weekly`
    - Select **Run whether user is logged on or not** if the computer may be logged out at that time.
 4. **Triggers** tab -> **New...**:
-   - **Weekly**, tick the day, and set a time after the SCDW files normally land (TODO: confirm day/time, e.g. Tuesday 9:00 AM). Click **OK**.
+   - **Weekly**, tick the day, and set a time after the SCDW files normally land  Click **OK**.
 5. **Actions** tab -> **New...**:
    - Action: **Start a program**
    - Program/script: `C:\ForecastTool\SupplyChainForecasting\.venv\Scripts\python.exe`
@@ -340,9 +338,11 @@ When the code is changed on GitHub, the new computer doesn't update by itself. T
    ```
 3. Start the app again.
 
+If the update changed the `scikit-learn` or `joblib` version in `requirements.txt`, retrain the models (Retrain page, or let the next automation run do it). Models saved under the old version may not load.
+
 `git pull` never touches `data/`, `models/`, `reports/`, or `logs/`, since Git doesn't track them.
 
-If `git pull` says `Your local changes to the following files would be overwritten`, someone edited code on this computer. **Don't force it.** Stop and contact the maintainer (TODO: name/contact), because those edits will be lost otherwise.
+If `git pull` says `Your local changes to the following files would be overwritten`, someone edited code on this computer. **Don't force it.** Stop and contact the maintainer, because those edits will be lost otherwise.
 
 ### Rolling back to an older version
 
@@ -366,25 +366,16 @@ Rolling back the code doesn't roll back the data. If a bad version damaged a dat
 
 ### Backups
 
-Since the data and models aren't in Git, the only copy is on the computer that runs the tool. TODO: decide on a backup routine (for example, copy `data/` and `models/` to a shared drive weekly, after the automation runs).
-
-### Alternative: running with Docker
-
-The repository also includes a `Dockerfile`, `docker-compose.yml`, and `app/ui/launch.bat` / `stop.bat` for running the tool in a Docker container. This needs Docker Desktop installed and isn't the recommended setup for a single Windows computer at the moment. Known issues to resolve first:
-- TODO: `docker-compose.yml` mounts `./data` to `/data`, but inside the container the app looks for `/app/data` (same for `models` and `reports`), so the container doesn't see the real data and anything it writes is lost when the container is removed. The volumes should probably be `./data:/app/data`, `./models:/app/models`, `./reports:/app/reports`, `./logs:/app/logs`.
-- TODO: the container listens on port 4999, but `launch.bat` opens `localhost:5000`.
-- TODO: `launch.bat` and `stop.bat` live in `app/ui/`, but `docker compose` has to be run from the project folder.
-- `docker-compose.yml` requires a `.env` file in the project folder (it contains `PORT=...`). It isn't in Git, so copy it from the old computer or create one.
-- `requirements.txt` must exist before building (Step 4).
+Since the data and models aren't in Git, the only copy is on the computer that runs the tool. 
 
 # Areas for future improvement
 
-- <b>Alternative cost functions</b>: Currently, the objective function can be chosen between minimizing error (number of units difference between predicted and actual orders) and TODO.
-   - Higher short-supply penalties: Punish the model much more if it underpredicts stock. This will encourage the model to take fewer risks in tightness to the TODO.
-   - Part-specific weights: Weight the part numbers such that the most important parts (e.g. by cost or volume) are the most TODO. Error is currently concentrated: a small number of parts (~50) carries most (~60%) of the error.
+- <b>Alternative cost functions</b>: Currently, the objective function can be chosen between minimizing error (number of units difference between predicted and actual orders).
+   - Higher short-supply penalties: Punish the model much more if it underpredicts stock. This will encourage the model to take fewer risks.
+   - Part-specific weights: Weight the part numbers such that the most important parts (e.g. by cost or volume) are the most impactful to the model. Error is currently concentrated: a small number of parts (~50) carries most (~60%) of the error.
    - New metrics for error reporting: Mean absolute error and mean squared error consider undershoot/overshoot equivalent. While weighting and penalties will just make the impact of certain parts/undershoot result in a larger MAE for the same amount of error, it might also be useful to look at this in terms of each metric individually.
 - <b>Resiliency against incomplete data</b>: The current model updates on a week-by-week basis; we chose this because although data is updated daily, predictions are made per location while ordering is aggregate, making validation per prediction impossible. However, this requires us to wait until all possible week data is known prior to making new predictions or validating old ones.
-- <b>Plant-to-plant model transferability</b>: The current model requires part numbers to be distinct to work; duplicated part numbers result in misattributed demand/ordering. While using internal part numbers might enable data to be aggregated, consideration should be given as to the value of insight relating to this. Aggregating all customer demand for a single OEM may provide model insight on large TODO.
-- <b>Dynamic cost</b>: When cost data was delivered, I was instructed to only TODO.
+- <b>Plant-to-plant model transferability</b>: The current model requires part numbers to be distinct to work; duplicated part numbers result in misattributed demand/ordering. While using internal part numbers might enable data to be aggregated, consideration should be given as to the value of insight relating to this. 
+- <b>Dynamic cost</b>: When cost data was delivered, I was instructed to only use the latest cost. However, registering costs to the date of the prediction/forecast may be important, I'm not sure.
 - <b>Improved augmentation strategies</b>: The current approach uses either last value or prior-year order to project a forward customer order. While this is not the only feature used for these forward projections, these choices can be pretty impactful the further in the future projections are made. For example, for the "last value" strategy, a PN which is otherwise only ordered every other week might end up with a multi-week forecast of zero or double stock.
 - <b>Broader hyperparameter search</b>: `app/optimize.py` samples a fixed search space at random. Future work could expand the parameter sets and use a smarter search (e.g. Bayesian or gradient-based).

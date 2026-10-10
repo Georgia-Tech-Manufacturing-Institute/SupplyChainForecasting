@@ -1,12 +1,13 @@
-
 logs/
-models
-# Ignore data files 
+
+# Ignore data files
 *.csv
 *.parquet
 *.db
 *.prn
 *.txt
+# ...except the package list. Must come after *.txt: later rules win.
+!requirements.txt
 *.xlsx
 *.pkl
 *.xls
@@ -17,6 +18,8 @@ models
 *.ipynb
 *.DS_Store
 .nikki
+# Train page week-picker choices (per install, like the data they describe)
+data/training_exclusions.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

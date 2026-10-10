@@ -23,8 +23,8 @@ SEARCH_SPACE = {
     'loss':             ['absolute_error', 'squared_error'],
     'l2':               [0.0, 0.1, 1.0, 5.0, 10.0],
     'learning_rate':    [0.03, 0.1, 0.2, 0.3],
-    'max_iter':         [100, 300, 500, 1000],
-    'max_leaf_nodes':   [15, 31, 63, 121, 241],
+    'max_iter':         [100, 300, 500],
+    'max_leaf_nodes':   [15, 31, 63, 100],
     'min_samples_leaf': [20, 50, 100],
 }
 DEFAULT_TRIALS = 5
