@@ -76,7 +76,7 @@ def is_extract(path, data_type):
 def check_extract_site(path, data_type, plant):
     '''
     Raises ValueError unless every row's site column (Site for ictrans,
-    Ship-From for custdemand) belongs to `plant`'s key -- e.g. AT00 for AT.
+    Ship-From for custdemand) contains `plant`'s key -- e.g. AT00 for AT, ICU3 for CU3.
     Without this, one plant's extract could quietly land in another plant's
     database now that the filename prefix is no longer enforced.
 
@@ -89,7 +89,7 @@ def check_extract_site(path, data_type, plant):
     col = EXTRACT_SITE_COLUMN[data_type]
     sites = pd.read_csv(path, sep='|', usecols=lambda c: c.strip() == col,
                         dtype=str).iloc[:, 0].dropna().str.strip()
-    foreign = sorted(s for s in sites.unique() if not s.upper().startswith(key.upper()))
+    foreign = sorted(s for s in sites.unique() if key.upper() not in s.upper())
     if foreign:
         raise ValueError(f"{col} {foreign} does not match plant key {key!r} "
                          f"for {plant}")
