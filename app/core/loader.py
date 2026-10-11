@@ -43,47 +43,104 @@ def resolve_sources(source):
     raise FileNotFoundError(f"No such file or directory: {source}")
 
 
+# Columns a pipe-delimited extract must carry to be read as that data type, and
+# which of them names the originating plant site (e.g. AT00).
+EXTRACT_HEADER = {
+    'consumption': ['Site', 'Item Number', 'Trans Date', 'Trans Number',
+                    'Trans Type', 'Trans Qty'],
+    'waterfall':   ['Ship-From', 'Rel Date', 'ShipTo', 'Part', 'PCR'],
+}
+EXTRACT_SITE_COLUMN = {'consumption': 'Site', 'waterfall': 'Ship-From'}
+
+
+def read_extract_header(path):
+    '''Column names on the first line of a pipe-delimited file, or None when
+    the file is not text or carries no pipes.'''
+    try:
+        with open(path, encoding='utf-8-sig', errors='strict') as f:
+            first = f.readline()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if '|' not in first:
+        return None
+    return [c.strip() for c in first.rstrip('\r\n').split('|')]
+
+
+def is_extract(path, data_type):
+    '''Whether `path` carries the header of a `data_type` extract. The header,
+    not the filename, decides: drops are often renamed or date-stamped.'''
+    header = read_extract_header(path)
+    return header is not None and set(EXTRACT_HEADER[data_type]) <= set(header)
+
+
+def check_extract_site(path, data_type, plant):
+    '''
+    Raises ValueError unless every row's site column (Site for ictrans,
+    Ship-From for custdemand) belongs to `plant`'s key -- e.g. AT00 for AT.
+    Without this, one plant's extract could quietly land in another plant's
+    database now that the filename prefix is no longer enforced.
+
+    Skipped when the plant has no plant_key entry, since there is nothing to
+    compare against.
+    '''
+    key = plant_extract_key(plant) if plant is not None else None
+    if key is None:
+        return
+    col = EXTRACT_SITE_COLUMN[data_type]
+    sites = pd.read_csv(path, sep='|', usecols=lambda c: c.strip() == col,
+                        dtype=str).iloc[:, 0].dropna().str.strip()
+    foreign = sorted(s for s in sites.unique() if not s.upper().startswith(key.upper()))
+    if foreign:
+        raise ValueError(f"{col} {foreign} does not match plant key {key!r} "
+                         f"for {plant}")
+
+
+def find_extract(folder, data_type, plant=None):
+    '''
+    The `data_type` extract in `folder`, recognised by header rather than name.
+    The conventional {key}_ictrans/_custdemand.txt wins when it is present and
+    well-formed; otherwise the most recently modified file with the right
+    header is used. None when the folder holds no such file.
+    '''
+    folder = Path(folder)
+    if not folder.is_dir():
+        return None
+    try:
+        conventional = folder / extract_filename(data_type, plant)
+        if conventional.is_file() and is_extract(conventional, data_type):
+            return conventional
+    except KeyError:
+        pass  # no plant_key entry, so no conventional name to prefer
+    candidates = [p for p in folder.iterdir()
+                  if p.is_file() and is_extract(p, data_type)]
+    return max(candidates, key=lambda p: p.stat().st_mtime, default=None)
+
+
 def classify_source(path, data_type, plant=None):
     '''
     Which of the two accepted shapes `path` is:
 
-      'extract' -- the pipe-delimited {plant_key}_ictrans/_custdemand extract,
-                   which carries its own dates and can span many weeks. It is
-                   named for one plant, so when that plant's key is known the
-                   prefix has to match it; otherwise one plant's extract could
-                   quietly land in another plant's database.
+      'extract' -- a pipe-delimited ictrans/custdemand extract, recognised by
+                   its header rather than its name. It carries its own dates
+                   and can span many weeks. Its site column is checked against
+                   the plant separately (check_extract_site).
       'weekly'  -- a legacy YYYYwkWW report, one week per file, the week taken
                    from the filename.
-      None      -- the name matches neither and the caller should skip it.
+      None      -- neither, and the caller should skip it.
     '''
-    name = Path(path).name.lower()
-    key = plant_extract_key(plant) if plant is not None else None
-    # Extracts may carry a date stamp before the extension
-    # (CU3_custdemand_260831.txt), so the stem is matched with an optional
-    # _<digits> tail.
-    stem = re.escape(EXTRACT_SUFFIX[data_type][:-len('.txt')]) + r'(_\d+)?\.txt'
-    if key is not None:
-        if re.fullmatch(re.escape(key.lower()) + stem, name):
-            return 'extract'
-    # No key configured for this plant, so there is nothing to match the prefix
-    # against; accept any extract carrying the right suffix.
-    elif re.search(stem + '$', name):
+    if is_extract(path, data_type):
         return 'extract'
     try:
-        parse_file_convention(name)
+        parse_file_convention(Path(path).name.lower())
     except ValueError:
         return None
     return 'weekly'
 
 
 def describe_expected(data_type, plant):
-    '''The filename shapes a load accepts, for skip/error messages.'''
-    try:
-        extract = extract_filename(data_type, plant)
-    except KeyError:
-        extract = f'*{EXTRACT_SUFFIX[data_type]}'
-    extract = extract[:-len('.txt')] + '[_<date>].txt'
-    return f'{extract} or the YYYYwkWW convention'
+    '''The shapes a load accepts, for skip/error messages.'''
+    header = '|'.join(EXTRACT_HEADER[data_type])
+    return f'a pipe-delimited extract with columns {header}, or the YYYYwkWW convention'
 
 
 def closed_weeks(conn, data_type):
@@ -166,12 +223,12 @@ def autoWaterfall(conn, folder, plant):
     Returns (source_filename, rows_written), or (None, 0) when the plant has
     no extract in `folder`.
     '''
-    folder = Path(folder)
-    plant_file = custDemand_filename(plant)
-    if not (folder / plant_file).exists():
-        print(f"     Skipping waterfall; no {plant_file} in {folder}")
+    path = find_extract(folder, 'waterfall', plant)
+    if path is None:
+        print(f"     Skipping waterfall; no custdemand extract in {folder}")
         return None, 0
-    return plant_file, load_custdemand(conn, folder / plant_file)
+    check_extract_site(path, 'waterfall', plant)
+    return path.name, load_custdemand(conn, path)
 
 
 def load_ictrans(conn, file, overwrite=False):
@@ -228,14 +285,14 @@ def autoConsumption(conn, folder, plant, overwrite=False):
     Returns (source_filename, inserted_rows, aggregated_week_indices), or
     (None, 0, []) when the plant has no extract in `folder`.
     '''
-    folder = Path(folder)
-    plant_file = ictrans_filename(plant)
-    if not (folder / plant_file).exists():
-        print(f"     Skipping consumption; no {plant_file} in {folder}")
+    path = find_extract(folder, 'consumption', plant)
+    if path is None:
+        print(f"     Skipping consumption; no ictrans extract in {folder}")
         return None, 0, []
 
-    inserted, aggregated, _ = load_ictrans(conn, folder / plant_file, overwrite)
-    return plant_file, inserted, aggregated
+    check_extract_site(path, 'consumption', plant)
+    inserted, aggregated, _ = load_ictrans(conn, path, overwrite)
+    return path.name, inserted, aggregated
 
 def complete_weeks(conn):
     '''Week indices in the landing table whose every calendar day is
@@ -291,7 +348,8 @@ def consumption_to_sql(conn, source, plant='arlington', overwrite=False):
 
     `source` may point at either shape, and a directory may mix them:
 
-      * {key}_ictrans.txt -- the transaction-level extract. Goes through the
+      * an ictrans extract (any name, recognised by its header) -- the
+        transaction-level extract. Goes through the
         landing table exactly as the weekly routine does, so a week is only
         totalled once all seven of its days are present.
       * YYYYwkWW.prn -- the legacy pre-aggregated weekly report. Already one
@@ -313,6 +371,7 @@ def consumption_to_sql(conn, source, plant='arlington', overwrite=False):
 
         try:
             if shape == 'extract':
+                check_extract_site(path, 'consumption', plant)
                 inserted, aggregated, parts = load_ictrans(conn, path, overwrite)
                 closed.update(aggregated)
                 if parts == 0:
@@ -391,7 +450,11 @@ def aggregate_waterfall(conn, wf, source_filename=None):
 def custDemand_to_sql(conn, plant, datadir):
     '''Loads the customer-demand extract for `plant` out of `datadir`.
     Thin alias kept for callers that name the plant rather than the file.'''
-    return load_custdemand(conn, Path(datadir) / custDemand_filename(plant))
+    path = find_extract(datadir, 'waterfall', plant)
+    if path is None:
+        raise FileNotFoundError(f"No custdemand extract in {datadir}")
+    check_extract_site(path, 'waterfall', plant)
+    return load_custdemand(conn, path)
 
 
 def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
@@ -400,7 +463,8 @@ def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
 
     `source` may point at either shape, and a directory may mix them:
 
-      * {key}_custdemand.txt -- the pipe-delimited customer-demand extract,
+      * a custdemand extract (any name, recognised by its header) -- the
+        pipe-delimited customer-demand extract,
         which carries release dates for several weeks at once.
       * YYYYwkWW.prn -- a legacy diamond report. Its rows carry their own
         release dates too, so the filename only identifies the file.
@@ -422,6 +486,7 @@ def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
             # Parsed here rather than through load_custdemand/load_waterfall_prn
             # so the part count is on hand for the report.
             if shape == 'extract':
+                check_extract_site(path, 'waterfall', plant)
                 print(f"Waterfall ingest: {path.name}")
                 wf = custDemandParse(file=path)
             else:
