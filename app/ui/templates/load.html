@@ -103,6 +103,21 @@
         {% endif %}
       {% endif %}
     </div>
+    {% if file_results and (request.form.get('data_type') != 'Cost') %}
+      <ul class="file-results">
+        {% for r in file_results %}
+          <li class="{{ 'loaded' if r.loaded else 'skipped' }}">
+            <span class="fr-mark">{{ '✔' if r.loaded else '✖' }}</span>
+            <span class="fr-name">{{ r.file }}</span>
+            {% if r.loaded %}
+              <span class="fr-detail">{{ '{:,}'.format(r.parts) }} parts · {{ r.detail }}</span>
+            {% else %}
+              <span class="fr-detail">Skipped: {{ r.detail }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
   </form>
 </div>
 
@@ -176,6 +191,21 @@
         {% endif %}
       {% endif %}
     </div>
+    {% if file_results and (request.form.get('data_type') == 'Cost') %}
+      <ul class="file-results">
+        {% for r in file_results %}
+          <li class="{{ 'loaded' if r.loaded else 'skipped' }}">
+            <span class="fr-mark">{{ '✔' if r.loaded else '✖' }}</span>
+            <span class="fr-name">{{ r.file }}</span>
+            {% if r.loaded %}
+              <span class="fr-detail">{{ '{:,}'.format(r.parts) }} parts · {{ r.detail }}</span>
+            {% else %}
+              <span class="fr-detail">Skipped: {{ r.detail }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
   </form>
 </div>
 

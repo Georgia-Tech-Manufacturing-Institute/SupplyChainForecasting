@@ -16,7 +16,8 @@ from app.reporting.data_quality import coverage_report
 from app.reporting.history_report import error_report
 from app.reporting.core import get_coverage_counts, plant_stats
 from app.core.parser import week_to_idx, idx_to_week
-from app.core.loader import create_connection, consumption_to_sql, waterfall_to_sql, cost_to_sql, filter_SQL
+from app.core.loader import (create_connection, consumption_to_sql, waterfall_to_sql,
+                             cost_to_sql, filter_SQL, file_result)
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
 from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
@@ -271,6 +272,7 @@ _NAME_RE = re.compile(r'^\d{4}wk\d{2}\.(prn|txt)$', re.IGNORECASE)
 def load():
     result = None
     error = None
+    file_results = []
     if request.method == "POST":
         plant_source = request.form.get("plant_source", "").strip()
         data_type    = request.form.get("data_type",    "").strip()
@@ -284,23 +286,37 @@ def load():
             dest_dir = raw_dir(plant_source, data_type)
             print(dest_dir)
             dest_dir.mkdir(parents=True, exist_ok=True)
+            saved = []
             for f in files:
-                f.save(dest_dir / os.path.basename(f.filename))
+                path = dest_dir / os.path.basename(f.filename)
+                f.save(path)
+                saved.append(path)
             try:
                 conn = create_connection(plant=plant_source.lower())
-                if data_type == "Consumption":
-                    consumption_to_sql(conn, dest_dir)
-                elif data_type == "Waterfall":
-                    waterfall_to_sql(conn, dest_dir)
-                elif data_type == "Cost":
-                    cost_to_sql(conn, dest_dir)
-                conn.close()
-                result = f"Saved and processed {len(files)} file(s) → {plant_source}/raw/{data_type}."
+                try:
+                    # Load only what was just uploaded, one file at a time, so
+                    # the report covers exactly these files.
+                    for path in saved:
+                        try:
+                            if data_type == "Consumption":
+                                file_results += consumption_to_sql(conn, path, plant=plant_source)
+                            elif data_type == "Waterfall":
+                                file_results += waterfall_to_sql(conn, path, plant=plant_source)
+                            elif data_type == "Cost":
+                                file_results += cost_to_sql(conn, path)
+                        except ValueError as e:
+                            # resolve_sources rejects unsupported extensions
+                            file_results.append(file_result(path.name, False, str(e)))
+                finally:
+                    conn.close()
+                n_loaded = sum(r['loaded'] for r in file_results)
+                result = (f"Loaded {n_loaded} of {len(file_results)} file(s) "
+                          f"into {plant_source} {data_type}.")
             except Exception as e:
                 error = str(e)
 
     return render_template("load.html", active="load", result=result, error=error,
-                           plant_sources=PLANT_SOURCES)
+                           file_results=file_results, plant_sources=PLANT_SOURCES)
 
 
 @app.route("/load/coverage/<plant>")

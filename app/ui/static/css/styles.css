@@ -255,6 +255,24 @@ label.check-label {
   color: #b71c1c;
 }
 
+/* per-file outcome list under the Load banners */
+.file-results {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.file-results li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 3px 0;
+}
+.file-results .fr-name { font-family: 'Courier New', monospace; }
+.file-results .loaded  .fr-mark { color: #2d6a30; }
+.file-results .skipped .fr-mark,
+.file-results .skipped .fr-detail { color: #b71c1c; }
+
 /* ── page heading ─────────────────────────────────────── */
 .page-title {
   font-size: 22px;

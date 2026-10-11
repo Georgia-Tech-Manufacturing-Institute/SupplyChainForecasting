@@ -1,4 +1,5 @@
 import os
+import re
 from app.core.parser import *
 import pandas as pd
 from datetime import date
@@ -57,12 +58,16 @@ def classify_source(path, data_type, plant=None):
     '''
     name = Path(path).name.lower()
     key = plant_extract_key(plant) if plant is not None else None
+    # Extracts may carry a date stamp before the extension
+    # (CU3_custdemand_260831.txt), so the stem is matched with an optional
+    # _<digits> tail.
+    stem = re.escape(EXTRACT_SUFFIX[data_type][:-len('.txt')]) + r'(_\d+)?\.txt'
     if key is not None:
-        if name == f'{key}{EXTRACT_SUFFIX[data_type]}'.lower():
+        if re.fullmatch(re.escape(key.lower()) + stem, name):
             return 'extract'
     # No key configured for this plant, so there is nothing to match the prefix
     # against; accept any extract carrying the right suffix.
-    elif name.endswith(EXTRACT_SUFFIX[data_type]):
+    elif re.search(stem + '$', name):
         return 'extract'
     try:
         parse_file_convention(name)
@@ -77,6 +82,7 @@ def describe_expected(data_type, plant):
         extract = extract_filename(data_type, plant)
     except KeyError:
         extract = f'*{EXTRACT_SUFFIX[data_type]}'
+    extract = extract[:-len('.txt')] + '[_<date>].txt'
     return f'{extract} or the YYYYwkWW convention'
 
 
@@ -181,7 +187,8 @@ def load_ictrans(conn, file, overwrite=False):
     4. Aggregate whichever weeks are now complete (see aggregate_consumption).
 
     Shared by the weekly routine (autoConsumption) and the one-off loader
-    (consumption_to_sql). Returns (inserted_rows, aggregated_week_indices).
+    (consumption_to_sql). Returns (inserted_rows, aggregated_week_indices,
+    landed_part_count).
     '''
     oq = pre['oq']
     file = Path(file)
@@ -189,7 +196,7 @@ def load_ictrans(conn, file, overwrite=False):
     raw = process_ictrans(file=file)
     if len(raw) == 0:
         print("     No ISS-SO transactions found")
-        return 0, []
+        return 0, [], 0
 
     closed = closed_weeks(conn, 'consumption')
     if closed and not overwrite:
@@ -201,6 +208,7 @@ def load_ictrans(conn, file, overwrite=False):
             raw = raw[~raw[oi].isin(closed)]
 
     inserted = 0
+    parts = raw['part'].nunique()
     if len(raw) > 0:
         rows = raw[['trans_number', 'part', 'orderdate', oq, oi]].copy()
         rows['orderdate'] = rows['orderdate'].dt.strftime('%Y-%m-%d')
@@ -209,7 +217,7 @@ def load_ictrans(conn, file, overwrite=False):
               f"({len(rows) - inserted} already present)")
 
     aggregated = aggregate_consumption(conn, file.name)
-    return inserted, aggregated
+    return inserted, aggregated, parts
 
 
 def autoConsumption(conn, folder, plant, overwrite=False):
@@ -226,7 +234,7 @@ def autoConsumption(conn, folder, plant, overwrite=False):
         print(f"     Skipping consumption; no {plant_file} in {folder}")
         return None, 0, []
 
-    inserted, aggregated = load_ictrans(conn, folder / plant_file, overwrite)
+    inserted, aggregated, _ = load_ictrans(conn, folder / plant_file, overwrite)
     return plant_file, inserted, aggregated
 
 def complete_weeks(conn):
@@ -271,6 +279,12 @@ def aggregate_consumption(conn, source_filename):
     print(f"     Aggregated {len(weeks)} complete week(s): {weeks}")
     return weeks
 
+def file_result(name, loaded, detail, parts=0):
+    '''One file's outcome from a bulk load: whether it landed, why or why not,
+    and how many distinct parts it carried. The Load page lists these.'''
+    return {'file': name, 'loaded': loaded, 'detail': detail, 'parts': int(parts)}
+
+
 def consumption_to_sql(conn, source, plant='arlington', overwrite=False):
     '''
     One-off consumption load, for a single file or a whole directory.
@@ -284,45 +298,61 @@ def consumption_to_sql(conn, source, plant='arlington', overwrite=False):
         row per part per week, so it bypasses the landing table and goes
         straight into consumption_agg, with its week read from the filename.
 
-    Returns the list of filenames that were loaded.
+    Returns one file_result per file considered.
     '''
-    done = []
+    results = []
     closed = closed_weeks(conn, 'consumption')
 
     for path in resolve_sources(source):
         shape = classify_source(path, 'consumption', plant)
         if shape is None:
-            print(f"     Skipping {path.name}; expected "
-                  f"{describe_expected('consumption', plant)}")
+            reason = f"name not recognised; expected {describe_expected('consumption', plant)}"
+            print(f"     Skipping {path.name}; {reason}")
+            results.append(file_result(path.name, False, reason))
             continue
 
-        if shape == 'extract':
-            _, aggregated = load_ictrans(conn, path, overwrite)
-            closed.update(aggregated)
-            done.append(path.name)
-            continue
-        else:
+        try:
+            if shape == 'extract':
+                inserted, aggregated, parts = load_ictrans(conn, path, overwrite)
+                closed.update(aggregated)
+                if parts == 0:
+                    results.append(file_result(path.name, False,
+                        'no new ISS-SO transactions (none in file, or all its weeks already loaded)'))
+                    continue
+                detail = f'{inserted} new transaction rows'
+                if aggregated:
+                    detail += f'; {len(aggregated)} complete week(s) aggregated'
+                results.append(file_result(path.name, True, detail, parts))
+                continue
+
             yr, wk = parse_file_convention(path.name)
             idx = week_to_idx(yr, wk)
             if idx in closed and not overwrite:
-                print(f"     Skipping {path.name}; consumption for {yr}W{wk} exists "
-                    "already; suppress this behavior by setting overwrite=True")
+                reason = f'consumption for {yr}W{wk} already loaded'
+                print(f"     Skipping {path.name}; {reason}; suppress this "
+                      "behavior by setting overwrite=True")
+                results.append(file_result(path.name, False, reason))
                 continue
             agg = process_consumption_prn(path, yr, wk)
-        print(f"     Processing: {path.name} as Yr{yr}Wk{wk}")
-        
-        if len(agg) == 0:
-            print("     No usable part rows found")
-            continue
+            print(f"     Processing: {path.name} as Yr{yr}Wk{wk}")
 
-        d_rows = load_to_sql(conn, 'consumption_agg', agg)
-        print(f"          Changed {d_rows} rows in consumption_agg")
-        update_loaded_files(conn, path.name, 'consumption', idx)
-        conn.commit()
-        closed.add(idx)
-        done.append(path.name)
+            if len(agg) == 0:
+                print("     No usable part rows found")
+                results.append(file_result(path.name, False, 'no usable part rows found'))
+                continue
 
-    return done
+            d_rows = load_to_sql(conn, 'consumption_agg', agg)
+            print(f"          Changed {d_rows} rows in consumption_agg")
+            update_loaded_files(conn, path.name, 'consumption', idx)
+            conn.commit()
+            closed.add(idx)
+            results.append(file_result(path.name, True, f'{yr}W{wk}; {d_rows} rows written',
+                                       agg['part'].nunique()))
+        except Exception as e:
+            print(f"     Failed {path.name}: {e}")
+            results.append(file_result(path.name, False, f'error: {e}'))
+
+    return results
 
 def get_loaded_files(conn, filter_type=None):
     loaded = filter_SQL(conn, table='loaded_files')
@@ -375,25 +405,46 @@ def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
       * YYYYwkWW.prn -- a legacy diamond report. Its rows carry their own
         release dates too, so the filename only identifies the file.
 
-    Returns the list of filenames that were loaded.
+    Returns one file_result per file considered.
     '''
     print("Bulk waterfall processing: ")
-    done = []
+    results = []
 
     for path in resolve_sources(source):
         shape = classify_source(path, 'waterfall', plant)
         if shape is None:
-            print(f"     Skipping {path.name}; expected "
-                  f"{describe_expected('waterfall', plant)}")
+            reason = f"name not recognised; expected {describe_expected('waterfall', plant)}"
+            print(f"     Skipping {path.name}; {reason}")
+            results.append(file_result(path.name, False, reason))
             continue
 
-        if shape == 'extract':
-            load_custdemand(conn, path)
-        else:
-            load_waterfall_prn(conn, path, overwrite)
-        done.append(path.name)
+        try:
+            # Parsed here rather than through load_custdemand/load_waterfall_prn
+            # so the part count is on hand for the report.
+            if shape == 'extract':
+                print(f"Waterfall ingest: {path.name}")
+                wf = custDemandParse(file=path)
+            else:
+                if not overwrite and already_loaded(conn, path.name, 'waterfall'):
+                    print(f"     Skipping {path.name}; already loaded")
+                    results.append(file_result(path.name, False, 'already loaded'))
+                    continue
+                print(f"     Parsing {path.name}")
+                wf = waterfallProcess(waterfallParse(path))
 
-    return done
+            if len(wf) == 0:
+                print("     No demand found")
+                results.append(file_result(path.name, False, 'no demand rows found'))
+                continue
+            rows = land_waterfall(conn, wf, path.name)
+            detail = (f'{rows} new waterfall rows' if rows
+                      else 'no new rows (all already loaded)')
+            results.append(file_result(path.name, True, detail, wf['part'].nunique()))
+        except Exception as e:
+            print(f"     Failed {path.name}: {e}")
+            results.append(file_result(path.name, False, f'error: {e}'))
+
+    return results
 
 def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
     ''' keeps log of week info for loaded files
@@ -418,16 +469,24 @@ def cost_to_sql(conn, source):
     Cost files are standalone lists rather than weekly reports -- costPrep
     already keeps only the latest Start per part -- so there is no week to
     record in loaded_files and no naming convention to satisfy.
+
+    Returns one file_result per file considered.
     '''
-    rows = 0
+    results = []
     for path in resolve_sources(source):
-        cost_map = costPrep(path)
-        cost_map = cost_map.rename({'Amt1': 'Amount'}, axis=1)
-        cost_map.Start = cost_map.Start.astype(str)
-        rows += load_to_sql(conn, 'cost', cost_map)
-        print(f"     Loaded {path.name}")
-    print(f"          Changed {rows} rows in cost")
-    return rows
+        try:
+            cost_map = costPrep(path)
+            cost_map = cost_map.rename({'Amt1': 'Amount'}, axis=1)
+            cost_map.Start = cost_map.Start.astype(str)
+            rows = load_to_sql(conn, 'cost', cost_map)
+        except Exception as e:
+            print(f"     Failed {path.name}: {e}")
+            results.append(file_result(path.name, False, f'error: {e}'))
+            continue
+        print(f"     Loaded {path.name}; changed {rows} rows in cost")
+        results.append(file_result(path.name, True, f'{rows} new cost rows',
+                                   cost_map['Part'].nunique()))
+    return results
 
 
 
