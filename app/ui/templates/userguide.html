@@ -14,6 +14,8 @@
 
 <div class="guide-toc">
   <a href="#time-and-data">Training vs. Validation vs. Test</a>
+  <a href="#exclusions">Excluding Weeks</a>
+  <a href="#run-history">Run History</a>
   <a href="#terms">Key Terms</a>
   <a href="#faq">FAQ</a>
 </div>
@@ -117,6 +119,133 @@
 </div>
 
 
+<!-- ── Train exclusions ─────────────────────────────────────────── -->
+<div class="guide-section" id="exclusions">
+  <div class="guide-section-title">
+    <span class="icon" style="width:28px;height:28px;font-size:14px;">🚫</span>
+    Excluding Weeks from Training
+  </div>
+
+  <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
+    Some weeks shouldn't be learned from: a plant shutdown, a data entry mistake, or a one-time
+    event that won't happen again. The <b>Train</b> page lets you leave those weeks out. Excluded
+    weeks are dropped from both training and validation scoring, so they neither teach the model
+    nor count for or against its score. They are still treated as real history, though: their
+    numbers still feed the "recent trend" features of the weeks that follow them.
+  </p>
+
+  <div class="guide-table-wrap">
+    <table class="guide-table">
+      <tbody>
+        <tr>
+          <td class="gt-page">Exclude Consumption Weeks</td>
+          <td colspan="2">Order weeks whose actual consumption is wrong or unrepresentative.
+            Every prediction made <em>about</em> that order week is dropped.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Exclude Waterfall Weeks</td>
+          <td colspan="2">Snapshot (release) weeks whose plan was wrong. Every prediction made
+            <em>from</em> that week's waterfall is dropped, whichever order weeks it covered.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Format</td>
+          <td colspan="2">Comma-separated weeks or ranges:
+            <code>2025-W52</code>, <code>2026-W01..2026-W03</code>, or the shorthand
+            <code>2026-W05..W07</code>. Put a part number and a colon in front to exclude that
+            part only, e.g. <code>1234-567:2026-W10</code>. A typo stops training with a message
+            showing the token it couldn't read.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Choose weeks…</td>
+          <td colspan="2">Opens a calendar of every week with data, one grid for waterfall
+            snapshots and one for consumption order weeks. Darker squares have more parts. Click
+            a week to switch it between kept and excluded, drag across several, or click a year
+            to switch the whole row. <b>Keep all weeks</b> clears the current plant's picks.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Applies to</td>
+          <td colspan="2">Picks are saved per plant. Weeks picked under <b>All plants</b> apply
+            to every plant and show striped in each plant's view; to change one, switch back to
+            All plants. A plant's exclusions are its own picks plus the All plants picks.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ul style="font-size:14px; line-height:1.75; padding-left:20px; margin:12px 0 0;">
+    <li>Saved picks are remembered between sessions. They fill the two text fields whenever
+      you open Train or change the plant. Part-specific entries you typed yourself are kept.</li>
+    <li>Each model saves the exact exclusions it was trained with. <b>Retrain</b> from a past
+      model refills the fields with that model's exclusions instead of your saved picks.</li>
+    <li>Exclusions only apply to models trained from the Train page. Automation and
+      optimization runs on <b>Run History</b> train on every week.</li>
+  </ul>
+</div>
+
+
+<!-- ── Run History ──────────────────────────────────────────────── -->
+<div class="guide-section" id="run-history">
+  <div class="guide-section-title">
+    <span class="icon" style="width:28px;height:28px;font-size:14px;">🛠️</span>
+    Run History
+  </div>
+
+  <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
+    Run History starts the two automated jobs and keeps a record of every time either one ran,
+    whether from this page or from the command line. Both run in the background, so you can
+    leave the page and come back. Only one job of each kind can run per plant at a time.
+  </p>
+
+  <div class="guide-table-wrap">
+    <table class="guide-table">
+      <tbody>
+        <tr>
+          <td class="gt-page">Run Automation</td>
+          <td colspan="2">The weekly routine (<code>routine.py</code>). For the chosen plant it:
+            <ol style="margin:6px 0 0 18px; padding:0;">
+              <li>writes an error report covering recent weeks;</li>
+              <li>loads any new consumption and waterfall extracts found in the
+                <b>Incoming folder</b>, then moves each loaded file to the plant's archive;</li>
+              <li>trains a new model on all weeks, holding out the last week for validation and
+                reusing the settings of whichever earlier model for this plant scored best;</li>
+              <li>saves the model, predicts the next 4 weeks, and saves those predictions as a
+                spreadsheet in that week's reports folder.</li>
+            </ol>
+            If no new files are found, it stops after step 2 and is marked <b>No new data</b>.
+            Use <b>Browse…</b> to pick a different incoming folder.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Optimize hyperparameters</td>
+          <td colspan="2">Searches for better model settings (<code>optimize.py</code>). It
+            tries the plant's current best settings plus random alternatives, for as many
+            <b>Trials</b> as you choose. Each trial is scored at 3 points in time, 4 weeks apart,
+            because one validation split is too noisy to rank settings fairly. If any trial beats
+            the current settings, it is saved as a model, and the next automation run will use
+            those settings automatically. Every trial's score is also saved as a CSV in the
+            reports folder. More trials search more widely, but each one adds minutes.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Run cards</td>
+          <td colspan="2">One card per run, newest first, showing the plant, which job ran, when
+            it started, and how long it took. Each step is a circle: ✓ succeeded, ✕ failed,
+            – skipped (for example, no file of that type in the incoming folder). Hover a step
+            for its message, or open <b>Step details</b> for the full table, including error
+            text when a step failed. While a job is running, the page refreshes itself every 10
+            seconds.</td>
+        </tr>
+        <tr>
+          <td class="gt-page">Status</td>
+          <td colspan="2"><b>Success</b>, <b>Failed</b>, <b>No new data</b>, <b>In progress</b>,
+            or <b>Interrupted</b>. Interrupted means the job stopped without recording why,
+            usually because the app was restarted mid-run, or it hasn't reported anything for 2
+            hours. It's safe to start the job again.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
 <!-- ── Key terms ────────────────────────────────────────────────── -->
 <div class="guide-section" id="terms">
   <div class="guide-section-title">
@@ -178,7 +307,7 @@
     <div class="faq-item">
       <div class="desc-title">Why does my model do so much worse when I expand the lookahead horizon?</div>
       <div class="faq-answer">
-        Given that the original data does not expand past a 24 week horizon, expanding predictions past these dates 
+        Given that the original data does not expand past a 24 week horizon, expanding predictions past these dates results in much less reliability. 
       </div>
     </div>
 

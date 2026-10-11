@@ -12,6 +12,8 @@ services:
       - ./data:/data
       - ./models:/models
       - ./reports:/reports
+      # incoming extracts folder (dirs['incoming'] = ~/Desktop/SCMDW; the container runs as root)
+      - ${HOME}/Desktop/SCMDW:/root/Desktop/SCMDW
     environment:
       - FLASK_ENV=production
     env_file:

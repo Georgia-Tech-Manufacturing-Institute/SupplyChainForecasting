@@ -676,21 +676,31 @@ def _launch_routine(kind: str, plant: str, target, **kwargs) -> bool:
     return True
 
 
-def _browse_root():
+def _browse_roots():
     dirs['incoming'].mkdir(parents=True, exist_ok=True)
-    return dirs['data'].resolve()
+    return [dirs['incoming'].resolve(), dirs['data'].resolve()]
+
+def _browse_root(path=None):
+    """The browse root containing `path`, or the incoming folder by default."""
+    roots = _browse_roots()
+    if path is not None:
+        path = Path(path).resolve()
+        for root in roots:
+            if path == root or root in path.parents:
+                return root
+    return roots[0]
 
 def _within_browse_root(path) -> bool:
-    root = _browse_root()
     path = Path(path).resolve()
-    return path == root or root in path.parents
+    return any(path == root or root in path.parents for root in _browse_roots())
 
 
 @app.route("/runs/folders")
 def runs_folders():
     """List subfolders for the incoming-folder picker. The UI runs in a
     headless container, so a native OS dialog isn't possible; browsing is
-    confined to the data folder (the part of the host mounted into it)."""
+    confined to the incoming and data folders (the parts of the host mounted
+    into it)."""
     path = Path(request.args.get("path") or dirs['incoming']).resolve()
     if not _within_browse_root(path) or not path.is_dir():
         path = _browse_root()
@@ -699,7 +709,7 @@ def runs_folders():
                           if p.is_dir() and not p.name.startswith('.')), key=str.lower)
     except OSError as exc:
         return jsonify({'error': str(exc)}), 400
-    root = _browse_root()
+    root = _browse_root(path)
     return jsonify({
         'path':    str(path),
         'parent':  str(path.parent) if path != root else None,

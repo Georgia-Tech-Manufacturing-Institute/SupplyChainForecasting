@@ -14,7 +14,7 @@ Where things live on disk (all relative to the project folder):
 | `app/` | All of the code | Yes |
 | `data/<Plant>/` | Raw weekly files (Waterfall, Consumption, Cost) | **No** |
 | `data/processed/` | One SQLite database per plant | **No** |
-| `data/incoming/` | Default folder the automation checks for new extracts | **No** |
+| `~/Desktop/SCMDW/` | Default folder the automation checks for new extracts (outside the project) | **No** |
 | `models/saved_models/` | Trained models (`.pkl`) | **No** |
 | `reports/` | Weekly outputs, e.g. `reports/2026wk41/predictions_*.xlsx` | **No** (`.xlsx` is ignored) |
 | `logs/routine_runs/` | Run history shown on the Runs page | **No** (only a couple of old examples are) |
@@ -45,7 +45,7 @@ python -m app.routine "<folder containing the extracts>" Arlington
 ```
 Note: use `python -m app.routine`, not `python app\routine.py`; the second form can't find the `app` package.
 
-When started from the **Runs** page instead, the incoming folder has to be inside the project's `data/` folder (by default `data/incoming/`), because the app only lets you browse there.
+When started from the **Runs** page instead, the incoming folder has to be inside the default incoming folder (`SCMDW` on the user's Desktop) or the project's `data/` folder, because the app only lets you browse there.
 
 TODO: how is the weekly run actually triggered on the production machine today (Task Scheduler, someone clicking the Runs page, something else)? See [Step 9](#step-9-optional-schedule-the-weekly-automation) under Moving devices for a Task Scheduler setup.
 
@@ -80,7 +80,7 @@ This is stuff that should be left to the professionals (i.e. someone who knows h
   ```
   python -m app.routine "<new folder>" Arlington
   ```
-- **Runs page:** pick the folder in the incoming-folder box before starting a run. The page can only browse inside the project's `data/` folder. To change the folder it starts in, edit the `'incoming'` entry in `dirs` in `app/prefixe.py` and restart the app. That entry must still point somewhere inside `data/`, or the Runs page will reject it. A network share can't be used here; use a scheduled task or the command line for those.
+- **Runs page:** pick the folder in the incoming-folder box before starting a run. The page can only browse inside the default incoming folder (`~/Desktop/SCMDW`) and the project's `data/` folder. To change the default, edit the `'incoming'` entry in `dirs` in `app/prefixe.py`, update the matching volume in `docker-compose.yml` so the container can see it, and restart the app. A network share can't be used here; use a scheduled task or the command line for those.
 
 Processed files are moved to `data/<plant>/<data type>/` by default. To archive them somewhere else, add a third argument: `python -m app.routine "<incoming folder>" Arlington "<archive folder>"`.
 
