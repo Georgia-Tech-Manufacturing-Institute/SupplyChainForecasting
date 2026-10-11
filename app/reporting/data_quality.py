@@ -3,7 +3,7 @@ from app.reporting.core import *
 from app.prefixe import pre, dirs
 
 def coverage_report(plant='arlington', since_idx=None, until_idx=None, part_prefix=None):
-    wf, cf = get_wf_cf('arlington')
+    wf, cf = get_wf_cf(plant)
     if since_idx is not None:
         wf = wf[wf['orderidx'] >= since_idx]
         cf = cf[cf['orderidx'] >= since_idx]

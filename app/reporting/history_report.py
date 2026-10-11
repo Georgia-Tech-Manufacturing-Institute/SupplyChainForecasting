@@ -6,7 +6,7 @@ Given a scope of time, creates reports for the past ordering accuracy
 '''
 
 from app.reporting.core import *
-from app.prefixe import pre, dirs
+from app.prefixe import pre, dirs, Path
 
 
 def build_bins(b, xmin=-1, xmax=1):
@@ -62,7 +62,12 @@ def error_report(plant='arlington', save_to_file=True, save_loc=None, max_lookah
     maxyr, maxwk = idx_to_week(max_date)
     daterange = f"{minyr}Wk{minwk:02d} - {maxyr}Wk{maxwk:02d}"
     if save_to_file:
-        name = save_loc if save_loc else 'OrderAccuracy_'
+        # save_loc may be a folder to save into, or a filename prefix under the reports dir
+        name = f'{plant}_OrderAccuracy'
+        if save_loc and Path(save_loc).is_dir():
+            save_dir = Path(save_loc)
+        elif save_loc:
+            name = save_loc
         report.to_excel(save_dir / f'{name}_{daterange}.xlsx')
         pct_report.to_excel(save_dir / f'{name}_Pct_{daterange}.xlsx') 
     if render:

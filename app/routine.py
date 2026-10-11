@@ -14,8 +14,12 @@ from app.core.parser import ictrans_filename, custDemand_filename
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.models.train import model_train, save_model, load_model, predict_from_bundle
 from app.reporting.history_report import error_report
+from app.reporting.data_quality import coverage_report
+from app.reporting.model_perform import holdout_report
 from app.core.run_logger import RunLogger
 
+
+### AUTOMATION CONFIGS
 DATA_TYPES = ['Consumption', 'Waterfall', 'Cost']
 # Extract filename each automated data type looks for in the incoming folder
 EXTRACT_FILENAMES = {'Consumption': ictrans_filename, 'Waterfall': custDemand_filename}
@@ -152,18 +156,31 @@ def runAutomation(plant, autodir, archive_dir=None, title=None):
 
             # Use the new model to perform predictions; push the predictions to the output_dir
             with run.step('Generate predictions') as rec:
-                predict_df = build_prediction_dataset(conn, aug_lookahead=DEFAULT_LOOKAHEAD_WEEKS)
+                predict_df = build_prediction_dataset(conn, 
+                                                      aug_lookahead=DEFAULT_LOOKAHEAD_WEEKS)
                 predictions = predict_from_bundle(bundle, predict_df)
                 rec['message'] = f'{len(predictions):,} predictions'
         finally:
             conn.close()
 
         with run.step('Save predictions') as rec:
-            pred_path = output_dir / f"predictions_{model_name}.xlsx"
+            pred_path = output_dir / f"{plant_key[plant]}_predictions_{model_name}.xlsx"
             predictions.to_excel(pred_path, index=False)
             rec['message'] = str(pred_path)
 
-        print(f"Saved model {model_name}.pkl and predictions to {output_dir}.")
+        with run.step('Generate holdout report') as rec:
+            holdout_path = output_dir / f"{plant_key[plant]}_holdout_{model_name}.html"
+            save_html_report(holdout_report(bundle.get('holdout_df')), holdout_path,
+                             f"{plant} holdout {model_name}")
+            rec['message'] = str(holdout_path)
+
+        with run.step('Generate coverage report') as rec:
+            coverage_path = output_dir / f"{plant_key[plant]}_coverage.html"
+            save_html_report(coverage_report(plant=plant.lower()), coverage_path,
+                             f"{plant} data coverage")
+            rec['message'] = str(coverage_path)
+
+        print(f"Saved model {model_name}.pkl, predictions and reports to {output_dir}.")
         run.finish('success')
     except Exception:
         run.finish('failed')
@@ -174,15 +191,21 @@ def runAutomation(plant, autodir, archive_dir=None, title=None):
         run.interrupt()
 
 
+def save_html_report(fragment, path, title):
+    """Wrap a Plotly HTML fragment in a standalone page and write it to path."""
+    path.write_text(f"<!doctype html><html><head><meta charset='utf-8'>"
+                    f"<title>{title}</title></head><body>{fragment}</body></html>",
+                    encoding='utf-8')
+    return path
+
+def repeatAutomation():
+    for plant in plant_key.keys():
+        # THIS ASSUMES ALL ARE DEPOSITED IN THE SAME FOLDER
+        autodir = dirs['incoming']
+        runAutomation(plant,
+                      autodir = autodir,
+                      archive_dir=dirs['data'] / plant.strip().capitalize() )
+
 
 if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Weekly load / retrain / predict routine.")
-    parser.add_argument('incoming_folder', help="Folder holding the plant's extracts directly, e.g. AT_ictrans.txt and AT_custdemand.txt.")
-    parser.add_argument('plant', help="Plant source, e.g. Arlington or Hermasillo.")
-    parser.add_argument('archive_folder', nargs='?', default=None,
-                        help="Folder to move processed files into (default: data/<plant>).")
-    args = parser.parse_args()
-
-    runAutomation(args.plant, args.incoming_folder, args.archive_folder)
+    repeatAutomation()
