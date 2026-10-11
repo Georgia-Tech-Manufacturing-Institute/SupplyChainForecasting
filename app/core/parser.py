@@ -219,8 +219,8 @@ def filter_partno(df, col='Part'):
     # Set filters to decrease the amount 
     df_filtered = df[
         df[col].str.contains(r'\d', na=False) 
-        & df[col].str.startswith(('L', 'M', '2', '4', '8'), 
-                                na=False)
+        # & df[col].str.startswith(('L', 'M', '2', '4', '8'), 
+        #                         na=False)
         & ~df[col].str.strip().str.contains(r'\s', na=False)
         & ~df[col].str.contains(r'_', na=False)
         & ~df[col].str.contains(r'\.', na=False)
