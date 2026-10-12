@@ -119,14 +119,10 @@ def runAutomation(plant, autodir, archive_dir=None, title=None):
                     os.makedirs(archive_dest, exist_ok=True)
                     
                     src = autodir / plant_file
-                    if title:
-                        archive_name = title
-                    else:
-                        dt = datetime.fromtimestamp(os.path.getctime(src))
-                        archive_name = f"{dt.isocalendar().year}wk{dt.isocalendar().week:02d}{src.suffix}"
-                    shutil.move(src, os.path.join(archive_dest, archive_name))
+                    dest = archive_path(src, archive_dest, title)
+                    shutil.move(src, dest)
 
-                    rec['message'] = f'{data_type} loaded and archived'
+                    rec['message'] = f'{data_type} loaded and archived as {dest.name}'
 
                 loaded_types.append(data_type)
         finally:
@@ -189,6 +185,23 @@ def runAutomation(plant, autodir, archive_dir=None, title=None):
         # No-op once finished; catches KeyboardInterrupt/SystemExit, which
         # skip the handler above and would otherwise leave the run 'running'
         run.interrupt()
+
+
+def archive_path(src, archive_dest, title=None):
+    """Date-stamped destination for an incoming extract, e.g.
+    AT_custdemand.txt -> AT_custdemand_261012.txt. The extracts arrive under
+    the same name every week, so without the stamp each archive would replace
+    the last. A second load on the same day gets _2, _3, ... rather than
+    overwriting the first."""
+    src, archive_dest = Path(src), Path(archive_dest)
+    stem = Path(title).stem if title else src.stem
+    base = f"{stem}_{datetime.now():%y%m%d}"
+    dest = archive_dest / f"{base}{src.suffix}"
+    n = 2
+    while dest.exists():
+        dest = archive_dest / f"{base}_{n}{src.suffix}"
+        n += 1
+    return dest
 
 
 def save_html_report(fragment, path, title):
