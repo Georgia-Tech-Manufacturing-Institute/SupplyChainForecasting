@@ -8,7 +8,7 @@ from app.prefixe import dirs, pre, plant_key
 from app.core.loader import create_connection
 
 from app.models.create_dataset import build_training_dataset
-from app.models.train import model_train, save_model, max_holdout_weeks
+from app.models.train import model_train, save_model, max_holdout_weeks, split_settings
 from app.core.run_logger import RunLogger
 from app.routine import DEFAULT_CONFIG, select_best_config
 
@@ -62,12 +62,13 @@ def evaluate_config(df, config, n_origins=DEFAULT_ORIGINS, step=DEFAULT_ORIGIN_S
     split is too noisy to rank configs, so each origin truncates the data
     `step` weeks earlier and holds out the last `holdout_weeks` from there."""
     max_oi = df[oi].max()
+    split, N = split_settings(config)
     maes, naive_maes = [], []
     for k in range(n_origins):
         sub = df[df[oi] <= max_oi - k * step]
         # Short histories (e.g. a newly added plant) can't support every origin;
         # skip the ones that would leave a model with no training rows.
-        if sub.empty or max_holdout_weeks(sub) < holdout_weeks:
+        if sub.empty or max_holdout_weeks(sub, N if split else None) < holdout_weeks:
             continue
         bundle = model_train(sub, holdout_weeks=holdout_weeks, plant=plant,
                              config=dict(config))

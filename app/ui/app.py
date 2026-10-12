@@ -18,7 +18,7 @@ from app.reporting.core import get_coverage_counts, plant_stats
 from app.core.parser import week_to_idx, idx_to_week
 from app.core.loader import (create_connection, consumption_to_sql, waterfall_to_sql,
                              cost_to_sql, filter_SQL, file_result)
-from app.models.train import model_train, save_model, load_model, predict_from_bundle
+from app.models.train import model_train, save_model, load_model, predict_from_bundle, N_THRESHOLD
 from app.reporting.model_perform import holdout_report
 from app.models.create_dataset import build_training_dataset, build_prediction_dataset
 from app.core.run_logger import list_runs
@@ -42,7 +42,7 @@ _STAGES = {
     'features':    ('Walk-forward features',   8),
     'consumption': ('Consumption features',   68),
     'merging':     ('Merging & filtering',    72),
-    'training_a':  ('Training Model A',       76),
+    'training_a':  ('Training model',         76),
     'training_b':  ('Training Model B',       88),
     'saving':      ('Saving model',           96),
     'done':        ('Complete',              100),
@@ -85,7 +85,9 @@ def _run_training_job(job_id: str, params: dict):
         report('consumption', f'Dataset ready — {len(df):,} rows')
         report('merging',     'Filtering and finalising features…')
 
-        report('training_a', f'Fitting Model A (predqty > {1})…')
+        split, N = params['split_model'], params['size_threshold']
+        report('training_a', f'Fitting Models A (predqty > {N:g}) and B (predqty ≤ {N:g})…'
+                             if split else 'Fitting model…')
         bundle = model_train(df, holdout_weeks=params['holdout'],
                              plant=params['plant'],
                              config={'obj':  params.get('objective', 'log'),
@@ -93,14 +95,14 @@ def _run_training_job(job_id: str, params: dict):
                                      'l2':   params.get('l2', 1.0),
                                      'target_mode':    params.get('target_mode', 'qty'),
                                      'model_type':     params.get('model_type', 'hgb'),
+                                     'split_model':    split,
+                                     'size_threshold': N,
                                      'scale_features': params.get('scale_features', False),
                                      'qty_scale_col':  params.get('qty_scale_col', 'predqty_max'),
                                      'wk_divisor':     params.get('wk_divisor', 52.0)})
 
         # Raw field text alongside the expanded rules, so Retrain can refill the form
         bundle['exclusions'] = params['exclusions']
-
-        report('training_b', 'Fitting Model B (predqty ≤ 1)…')
 
         report('saving', 'Persisting model to disk…')
         nickname = params['nickname']
@@ -521,6 +523,9 @@ def model_retrain_config(name):
     return jsonify({
         'plant_source':        bundle.get('plant', ''),
         'model_type':          str(cfg.get('model_type', 'hgb')).lower(),
+        # Bundles from before splitting was optional are always split
+        'split_model':         bundle.get('mB') is not None,
+        'size_threshold':      bundle.get('size_threshold') or N_THRESHOLD,
         'earliest_order_date': _iso_week(min_oi),
         'latest_order_date':   _iso_week(max_oi),
         'target_mode':         cfg.get('target_mode', 'qty'),
@@ -1061,6 +1066,8 @@ def retrain_start():
             # 'min_la_pad':     int(request.form.get("min_part_lookahead_to_pad", 4) or 4),
             # 'la_pad':         int(request.form.get("lookahead_padding", 4) or 4),
             'model_type':     model_type,
+            'split_model':    request.form.get("split_model") == "1",
+            'size_threshold': float(request.form.get("size_threshold", N_THRESHOLD) or N_THRESHOLD),
             'target_mode':    request.form.get("target_mode", "qty").strip(),
             'objective':      request.form.get("objective", "log").strip(),
             'loss':           request.form.get("loss", "absolute_error").strip(),

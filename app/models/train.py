@@ -17,7 +17,7 @@ oi = pre['oi']
 oq = pre['oq']
 
 AMT_COL = 'amount'
-N_THRESHOLD = 1  # split point: Model A trains on predqty > N, Model B on <= N
+N_THRESHOLD = 1  # default split point when split_model is on: Model A trains on predqty > N, Model B on <= N
 TARGET_MODES = ('raw', 'volume', 'qty')
 DEFAULT_TARGET_MODE = 'qty'
 
@@ -150,19 +150,29 @@ def build_XY(df, obj, drop_cols=None, scale_config: dict | None = None,
     return X, y
 
 
-def max_holdout_weeks(df: pd.DataFrame, N: int = N_THRESHOLD) -> int:
+def split_settings(config: dict | None) -> tuple[bool, float]:
+    """(split_model, size_threshold) from a training config; unsplit by default."""
+    config = config or {}
+    return bool(config.get('split_model', False)), float(config.get('size_threshold', N_THRESHOLD))
+
+
+def max_holdout_weeks(df: pd.DataFrame, N: float | None = None) -> int:
     """
-    Largest holdout_weeks that still leaves training rows for both Model A
-    (predqty > N) and Model B (predqty <= N). Training keeps oi < max(oi) - h,
-    so each side needs its earliest known week below that split. Returns 0 when
-    no holdout is possible (e.g. a plant with only a few weeks of history).
+    Largest holdout_weeks that still leaves training rows for every model.
+    Training keeps oi < max(oi) - h, so each model needs its earliest known
+    week below that split. With N set (a split model), that means both Model A
+    (predqty > N) and Model B (predqty <= N); with N=None, the single model.
+    Returns 0 when no holdout is possible (e.g. a plant with only a few weeks
+    of history).
     """
     known = df[df[oq].notna() & df[pq].notna()]
-    hi = known.loc[known[pq] > N, oi]
-    lo = known.loc[known[pq] <= N, oi]
-    if hi.empty or lo.empty:
+    if N is None:
+        sides = [known[oi]]
+    else:
+        sides = [known.loc[known[pq] > N, oi], known.loc[known[pq] <= N, oi]]
+    if any(s.empty for s in sides):
         return 0
-    return max(int(df[oi].max() - max(hi.min(), lo.min()) - 1), 0)
+    return max(int(df[oi].max() - max(s.min() for s in sides) - 1), 0)
 
 
 def make_model(config: dict):
@@ -200,7 +210,8 @@ def model_train(df: pd.DataFrame,
                 plant: str='arlington',
                 config: dict = None):
     """
-    Train dual models (high/low predqty split) on df.
+    Train a single model on df, or with config['split_model'] two models split
+    on predqty at config['size_threshold'] (Model A: predqty > N, Model B: <= N).
 
     Returns a bundle dict with models, config, and feature column names.
     If holdout_weeks > 0, also evaluates and returns scores in the bundle.
@@ -210,7 +221,8 @@ def model_train(df: pd.DataFrame,
         config = {'obj': 'log', 'loss': 'absolute_error', 'l2': 1.0}
 
     obj = config.get('obj', 'log')
-    N   = N_THRESHOLD
+    split, N = split_settings(config)
+    config['split_model'], config['size_threshold'] = split, N  # always saved in the bundle
 
     target_mode = config.get('target_mode', DEFAULT_TARGET_MODE)
     if target_mode not in TARGET_MODES:
@@ -235,13 +247,14 @@ def model_train(df: pd.DataFrame,
     df_valid  = df[valid]
 
     if holdout_weeks > 0:
-        cap = max_holdout_weeks(df, N)
+        cap = max_holdout_weeks(df, N if split else None)
         span = f"order weeks {int(df[oi].min())}-{int(df[oi].max())}"
         if cap < 1:
             raise ValueError(f"Not enough history for a holdout ({span}); "
                              "train with holdout_weeks <= 0.")
         if holdout_weeks > cap:
-            warnings.warn(f"holdout_weeks={holdout_weeks} would leave Model A or B "
+            who = "Model A or B" if split else "the model"
+            warnings.warn(f"holdout_weeks={holdout_weeks} would leave {who} "
                           f"with no training rows ({span}); using {cap}.")
             holdout_weeks = cap
         split_week = df[oi].max() - holdout_weeks
@@ -253,17 +266,20 @@ def model_train(df: pd.DataFrame,
         train_idx = pd.Series(True, index=df_valid.index)
         test_idx  = pd.Series(False, index=df_valid.index)
 
-    # Model A: predqty > N
-    train_hi   = train_idx & (df_valid[pq] > N)
-    X_tr_A, y_tr_A = X_valid[train_hi], y_valid[train_hi]
-    mA = make_model(config)
-    mA.fit(X_tr_A, y_tr_A)
+    if split:
+        # Model A: predqty > N
+        train_hi   = train_idx & (df_valid[pq] > N)
+        mA = make_model(config)
+        mA.fit(X_valid[train_hi], y_valid[train_hi])
 
-    # Model B: predqty <= N
-    train_lo   = train_idx & (df_valid[pq] <= N)
-    X_tr_B, y_tr_B = X_valid[train_lo], y_valid[train_lo]
-    mB = make_model(config)
-    mB.fit(X_tr_B, y_tr_B)
+        # Model B: predqty <= N
+        train_lo   = train_idx & (df_valid[pq] <= N)
+        mB = make_model(config)
+        mB.fit(X_valid[train_lo], y_valid[train_lo])
+    else:
+        mA = make_model(config)
+        mA.fit(X_valid[train_idx], y_valid[train_idx])
+        mB = None
 
     part_max_oq = df.groupby('part')[oq].max()
 
@@ -272,9 +288,9 @@ def model_train(df: pd.DataFrame,
         'train_span': (X_valid[train_idx].min(),
                        X_valid[train_idx].max()),
         'mA': mA,
-        'mB': mB,
+        'mB': mB,  # None for an unsplit model
         'config': config,
-        'size_threshold': N,
+        'size_threshold': N if split else None,
         'feature_cols': list(X_valid.columns),
         'scale_config': scale_config,
         'holdout_weeks': holdout_weeks,  # effective value, after any cap
@@ -289,21 +305,10 @@ def model_train(df: pd.DataFrame,
 
     if holdout_weeks > 0:
         X_test  = X_valid[test_idx]
-        y_test  = y_valid[test_idx]
         amt_test = df_valid[AMT_COL][test_idx]
         pq_test  = df_valid[pq][test_idx]
 
-        mask_hi = pq_test.values > N
-        mask_lo = ~mask_hi
-
-        preds_A = inverse_transform_target(mA.predict(X_test[mask_hi]), obj)
-        preds_B = inverse_transform_target(mB.predict(X_test[mask_lo]), obj)
-        y_raw   = inverse_transform_target(y_test.values, obj)
-
-        preds = np.empty(len(X_test))
-        preds[mask_hi] = preds_A
-        preds[mask_lo] = preds_B
-
+        preds = _predict_split(bundle, X_test, pq_test.values, obj)
 
         base_cols = ['part', oi, oq, pq]
         if 'lookahead_wk' in df_valid.columns:
@@ -333,6 +338,24 @@ def model_train(df: pd.DataFrame,
     return bundle
 
 
+def _predict_split(bundle, X: pd.DataFrame, pq_vals: np.ndarray, obj: str) -> np.ndarray:
+    """Inverse-transformed predictions, routing rows to Model A/B when the bundle
+    is split. Bundles saved before splitting was optional always have an mB."""
+    mA, mB = bundle['mA'], bundle.get('mB')
+    if mB is None:
+        return inverse_transform_target(mA.predict(X), obj) if len(X) else np.zeros(0)
+
+    N = bundle['size_threshold']
+    mask_hi = pq_vals > N
+    mask_lo = ~mask_hi
+    preds = np.zeros(len(X))
+    if mask_hi.any():
+        preds[mask_hi] = inverse_transform_target(mA.predict(X[mask_hi]), obj)
+    if mask_lo.any():
+        preds[mask_lo] = inverse_transform_target(mB.predict(X[mask_lo]), obj)
+    return preds
+
+
 def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     """
     Apply a saved model bundle to a feature-ready dataframe.
@@ -350,9 +373,6 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     Naive baseline) so callers can report accuracy instead of treating those
     rows as blind guesses.
     """
-    mA   = bundle['mA']
-    mB   = bundle['mB']
-    N    = bundle['size_threshold']
     obj  = bundle['config']['obj']
     target_mode = bundle['config'].get('target_mode', DEFAULT_TARGET_MODE)
     cols = bundle['feature_cols']
@@ -377,16 +397,7 @@ def predict_from_bundle(bundle, df: pd.DataFrame) -> pd.DataFrame:
     # Align to training columns; fill any missing with NaN (HistGBR handles it)
     X = X.reindex(columns=cols)
 
-    mask_hi = df[pq].values > N
-    mask_lo = ~mask_hi
-
-    preds = np.zeros(len(X))
-    if mask_hi.any():
-        preds[mask_hi] = inverse_transform_target(mA.predict(X[mask_hi]), obj)
-    if mask_lo.any():
-        preds[mask_lo] = inverse_transform_target(mB.predict(X[mask_lo]), obj)
-
-    df['adj_volume']   = preds
+    df['adj_volume']   = preds = _predict_split(bundle, X, df[pq].values, obj)
     qty_delta = target_to_qty(preds, df[AMT_COL].values, target_mode, pq=df[pq].values)
     df['est_orderqty'] = np.round(df[pq].values + qty_delta)
     missing = df['est_orderqty'].isna()

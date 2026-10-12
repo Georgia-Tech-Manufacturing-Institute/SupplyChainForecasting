@@ -154,6 +154,27 @@
             </td>
           </tr>
           <tr>
+            <th class="row-label">Split Model
+              <div class="help-text">Fit two models: Model A on rows planned above the size threshold, Model B on the rest</div>
+            </th>
+            <td>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="split_toggle" name="split_model" value="1"
+                       style="width:15px; height:15px; cursor:pointer;" />
+                <span style="font-size:13px;">Split by planned quantity</span>
+              </label>
+            </td>
+          </tr>
+          <tr id="split-params" style="display:none;">
+            <th class="row-label">Size Threshold
+              <div class="help-text">Rows with <code>predqty</code> above this go to Model A, at or below to Model B</div>
+            </th>
+            <td>
+              <input type="number" name="size_threshold" id="size_threshold" value="1" min="0" step="any"
+                     style="max-width:80px;" />
+            </td>
+          </tr>
+          <tr>
             <th class="row-label">Scale Features
               <div class="help-text">Normalise <code>_qty</code> columns by a row-level denominator column and <code>_wk</code> columns by a fixed divisor</div>
             </th>
@@ -346,6 +367,15 @@
     syncScale();
   })();
 
+  /* ── split toggle ───────────────────────────────────────── */
+  (function () {
+    const toggle = document.getElementById('split_toggle');
+    const params = document.getElementById('split-params');
+    function syncSplit() { params.style.display = toggle.checked ? '' : 'none'; }
+    toggle.addEventListener('change', syncSplit);
+    syncSplit();
+  })();
+
   /* ── loss / l2 visibility (gradient boosting only) ──────── */
   (function () {
     const sel     = document.getElementById('model_type');
@@ -425,7 +455,10 @@
         setVal('wk_divisor', cfg.wk_divisor);
         setVal('other_scale', cfg.other_scale);
         setVal('exclude_consumption', cfg.exclude_consumption);
-        setVal('exclude_waterfall', cfg.exclude_waterfall);        document.getElementById('scale_toggle').checked = !!cfg.scale_features;
+        setVal('exclude_waterfall', cfg.exclude_waterfall);
+        setVal('size_threshold', cfg.size_threshold);
+        document.getElementById('scale_toggle').checked = !!cfg.scale_features;
+        document.getElementById('split_toggle').checked = !!cfg.split_model;
 
         userEdited = true;
         nicknameEl.value = modelName.replace(/\.pkl$/, '') + '_retrain';
@@ -433,6 +466,7 @@
         // re-run visibility toggles / highlighting for the fields we just set
         document.getElementById('model_type').dispatchEvent(new Event('change'));
         document.getElementById('scale_toggle').dispatchEvent(new Event('change'));
+        document.getElementById('split_toggle').dispatchEvent(new Event('change'));
       })
       .catch(err => {
         document.getElementById('start-error').textContent = 'Could not load parameters from ' + modelName + ': ' + err;

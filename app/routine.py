@@ -174,11 +174,11 @@ def runAutomation(plant, autodir, archive_dir=None, title=None):
                              f"{plant} holdout {model_name}")
             rec['message'] = str(holdout_path)
 
-        with run.step('Generate coverage report') as rec:
-            coverage_path = output_dir / f"{plant_key[plant]}_coverage.html"
-            save_html_report(coverage_report(plant=plant.lower()), coverage_path,
-                             f"{plant} data coverage")
-            rec['message'] = str(coverage_path)
+        # with run.step('Generate coverage report') as rec:
+        #     coverage_path = output_dir / f"{plant_key[plant]}_coverage.html"
+        #     save_html_report(coverage_report(plant=plant.lower()), coverage_path,
+        #                      f"{plant} data coverage")
+        #     rec['message'] = str(coverage_path)
 
         print(f"Saved model {model_name}.pkl, predictions and reports to {output_dir}.")
         run.finish('success')

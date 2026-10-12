@@ -41,8 +41,10 @@ The fundamental workflow for the tool does not involve any manual steps once it 
 
 To run it by hand from a Command Prompt in the project folder (with the virtual environment activated, see below):
 ```
-python -m app.routine "<folder containing the extracts>" Arlington
+python -m app.routine
 ```
+This takes no arguments. It runs the routine once for **every** plant in `plant_key`, one after another, reading from the default incoming folder (`SCMDW` on the Desktop of the Windows user running it; see `'incoming'` in `dirs` in `app/prefixe.py`) and archiving into `data/<Plant>/`. Plants whose files aren't there are logged as `no_new_data`. If one plant's run fails, the plants after it are not run that time.
+
 Note: use `python -m app.routine`, not `python app\routine.py`; the second form can't find the `app` package.
 
 When started from the **Runs** page instead, the incoming folder has to be inside the default incoming folder (`SCMDW` on the user's Desktop) or the project's `data/` folder, because the app only lets you browse there.
@@ -62,27 +64,29 @@ The reporting module exists to provide feedback on the tool itself and model per
 Based on the data mosaic shown on the Load page, it may be evident that there is missing info. To manually load data outside of the automation pipeline:
 
 1. Get the file(s) for the missing week(s). 
-2. On the **Load** page, select the plant under "Plant Source", choose the "Data Type", and upload the file(s).
+2. On the **Load** page, select the plant under "Plant Source", choose the "Data Type", and upload the file(s). You can select and load files individually OR just highlight all files at once. 
 3. Re-check the coverage heatmap on the Load page to confirm the gap is filled.
 4. Retrain (Retrain page, or the next automation run) so the model sees the new data.
 
 Note that because the week is the smallest unit of time, a week that is only partly loaded is treated as incomplete.
+
+Manual data loading can be performed on the old .prn style, OR the new .txt, pipe-delimited data warehouse format. Check the DEV Readme to see the difference between these formats. 
 
 # Advanced user flows
 This is stuff that should be left to the professionals (i.e. someone who knows how to roll back a version, at least; see [Rolling back to an older version](#rolling-back-to-an-older-version)). There are a lot of opportunities for things to go wrong, so make a copy of the `data/` and `models/` folders before starting.
 
 ## Change the automation path 
 
-`app/routine.py` has no saved setting for where it looks. The incoming folder is passed in each time the routine starts, so you change it wherever the routine is started from. Whichever you use, the new folder must hold the extracts **directly** (e.g. `AT_ictrans.txt`, `AT_custdemand.txt`), not in subfolders.
+Whichever folder you use, it must hold the extracts **directly** (e.g. `AT_ictrans.txt`, `AT_custdemand.txt`), not in subfolders.
 
-- **Scheduled task (production):** open **Task Scheduler**, find the plant's task (e.g. `Forecast Tool - Arlington weekly`), right-click -> **Properties** -> **Actions** tab -> select the action -> **Edit...**. Change the quoted folder in **Add arguments**, e.g. `-m app.routine "\\newserver\share\SCDW" Arlington`. Click **OK** twice. There is one task per plant, so repeat for each. Use the full network path, not a mapped drive letter (see [Step 9](#step-9-optional-schedule-the-weekly-automation)).
-- **Command line:** the folder is the first argument:
+- **Scheduled task / command line:** `python -m app.routine` takes no arguments and always reads the `'incoming'` entry in `dirs` in `app/prefixe.py` (default `Path.home() / 'Desktop' / 'SCMDW'`). To point it somewhere else, change that line, e.g.
+  ```python
+  'incoming': Path(r'\\newserver\share\SCDW'),
   ```
-  python -m app.routine "<new folder>" Arlington
-  ```
-- **Runs page:** pick the folder in the incoming-folder box before starting a run. The page can only browse inside the default incoming folder (`~/Desktop/SCMDW`) and the project's `data/` folder. To change the default, edit the `'incoming'` entry in `dirs` in `app/prefixe.py`, update the matching volume in `docker-compose.yml` so the container can see it, and restart the app. A network share can't be used here; use a scheduled task or the command line for those.
+  Use the full network path, not a mapped drive letter (see [Step 9](#step-9-optional-schedule-the-weekly-automation)). The scheduled task doesn't need to change.
+- **Runs page:** pick the folder in the incoming-folder box before starting a run. The page can only browse inside the default incoming folder and the project's `data/` folder. If you change the default, update the matching volume in `docker-compose.yml` so the container can see it, and restart the app. A network share can't be browsed here.
 
-Processed files are moved to `data/<plant>/<data type>/` by default. To archive them somewhere else, add a third argument: `python -m app.routine "<incoming folder>" Arlington "<archive folder>"`.
+Processed files are moved to `data/<Plant>/<data type>/`.
 
 After changing the path, test it: put the week's extracts in the new folder (or wait for the next drop), run the routine once, and check that the **Runs** page shows the load steps as passed rather than skipped. Don't just look for `no_new_data`: that only means the files weren't found.
 
@@ -306,23 +310,30 @@ So that nobody needs to type commands to start the tool day to day:
 
 Only do this on the one computer that should process the weekly SCDW files. **Don't schedule it on two computers at once**: the routine *moves* the files out of the folder it reads from, so whichever computer runs first takes them.
 
-1. Open the Start menu, type `Task Scheduler`, and open it.
-2. In the right-hand panel, click **Create Task...** (not "Create Basic Task").
-3. **General** tab:
-   - Name: `Forecast Tool - Arlington weekly`
+One task covers all plants: each run processes every plant in `plant_key`.
+
+1. Check where the routine will look for files. It reads the `'incoming'` entry in `dirs` in `app/prefixe.py`, which defaults to `SCMDW` on the Desktop of the Windows user the task runs as (e.g. `C:\Users\<you>\Desktop\SCMDW`).
+   - If the SCDW files land on a network share instead, change that line to the share's full path, e.g. `'incoming': Path(r'\\servername\share\SCDW'),`. Use the full network path, not a mapped drive letter like `S:\`, because scheduled tasks often can't see mapped drive letters.
+   - On work laptops where OneDrive manages the Desktop, the real Desktop may be `C:\Users\<you>\OneDrive - <Company>\Desktop`, which is **not** the folder the routine checks. In that case, set `'incoming'` to the exact folder path.
+2. Open the Start menu, type `Task Scheduler`, and open it.
+3. In the right-hand panel, click **Create Task...** (not "Create Basic Task").
+4. **General** tab:
+   - Name: `Forecast Tool - weekly`
+   - **When running the task, use the following user account**: leave it as your own account. The default incoming folder is that account's Desktop, so it has to be the account that gets the files.
    - Select **Run whether user is logged on or not** if the computer may be logged out at that time.
-4. **Triggers** tab -> **New...**:
-   - **Weekly**, tick the day, and set a time after the SCDW files normally land  Click **OK**.
-5. **Actions** tab -> **New...**:
+5. **Triggers** tab -> **New...**:
+   - **Begin the task:** On a schedule -> **Weekly**, **Recur every** 1 weeks, tick the day, and set a time after the SCDW files normally land (they update on Tuesdays, so e.g. Tuesday afternoon or Wednesday morning). Make sure **Enabled** is ticked, then click **OK**.
+6. **Actions** tab -> **New...**:
    - Action: **Start a program**
-   - Program/script: `C:\ForecastTool\SupplyChainForecasting\.venv\Scripts\python.exe`
-   - Add arguments: `-m app.routine "<SCDW folder path>" Arlington`
-   - Start in: `C:\ForecastTool\SupplyChainForecasting`
+   - Program/script: `C:\ForecastTool\SupplyChainForecasting\.venv\Scripts\python.exe` (the virtual environment's Python, so you don't need to activate anything)
+   - Add arguments: `-m app.routine` (exactly this, with nothing after it)
+   - Start in: `C:\ForecastTool\SupplyChainForecasting` (required: without it, Python can't find the `app` package)
    - Click **OK**.
-   - Use the full network path for the SCDW folder (like `\\servername\share\SCDW`), not a mapped drive letter like `S:\`. Scheduled tasks often can't see mapped drive letters.
-6. Click **OK** and enter your Windows password if asked.
-7. Repeat for each plant (one task per plant, with that plant's name at the end of the arguments).
-8. Test it: right-click the task -> **Run**. Then open the app's **Runs** page; a new run should appear. If the extract files weren't in the folder, it will show `no_new_data`, which is expected.
+7. **Conditions** tab: on a laptop, untick **Start the task only if the computer is on AC power**. Optionally tick **Wake the computer to run this task**.
+8. **Settings** tab: tick **Run task as soon as possible after a scheduled start is missed**, so a run missed while the computer was off happens later instead of being skipped.
+9. Click **OK** and enter your Windows password if asked.
+10. Test it: right-click the task -> **Run**. Then open the app's **Runs** page; one new run per plant should appear. Plants whose extract files weren't in the folder show `no_new_data`, which is expected.
+    - If no runs appear, look at the **Last Run Result** column in Task Scheduler (press F5 to refresh). `0x0` means Python ran; anything else usually means a wrong **Program/script** path or a missing **Start in** folder.
 
 ### Getting updates later
 
