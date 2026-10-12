@@ -1,5 +1,6 @@
 import os
 import time
+import warnings
 
 import joblib
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
@@ -149,6 +150,21 @@ def build_XY(df, obj, drop_cols=None, scale_config: dict | None = None,
     return X, y
 
 
+def max_holdout_weeks(df: pd.DataFrame, N: int = N_THRESHOLD) -> int:
+    """
+    Largest holdout_weeks that still leaves training rows for both Model A
+    (predqty > N) and Model B (predqty <= N). Training keeps oi < max(oi) - h,
+    so each side needs its earliest known week below that split. Returns 0 when
+    no holdout is possible (e.g. a plant with only a few weeks of history).
+    """
+    known = df[df[oq].notna() & df[pq].notna()]
+    hi = known.loc[known[pq] > N, oi]
+    lo = known.loc[known[pq] <= N, oi]
+    if hi.empty or lo.empty:
+        return 0
+    return max(int(df[oi].max() - max(hi.min(), lo.min()) - 1), 0)
+
+
 def make_model(config: dict):
     """Return an untrained estimator for the requested model_type."""
     mtype = config.get('model_type', 'hgb')
@@ -219,6 +235,15 @@ def model_train(df: pd.DataFrame,
     df_valid  = df[valid]
 
     if holdout_weeks > 0:
+        cap = max_holdout_weeks(df, N)
+        span = f"order weeks {int(df[oi].min())}-{int(df[oi].max())}"
+        if cap < 1:
+            raise ValueError(f"Not enough history for a holdout ({span}); "
+                             "train with holdout_weeks <= 0.")
+        if holdout_weeks > cap:
+            warnings.warn(f"holdout_weeks={holdout_weeks} would leave Model A or B "
+                          f"with no training rows ({span}); using {cap}.")
+            holdout_weeks = cap
         split_week = df[oi].max() - holdout_weeks
         train_idx  = df_valid[oi] < split_week
         test_idx   = df_valid[oi] >= split_week
@@ -252,6 +277,7 @@ def model_train(df: pd.DataFrame,
         'size_threshold': N,
         'feature_cols': list(X_valid.columns),
         'scale_config': scale_config,
+        'holdout_weeks': holdout_weeks,  # effective value, after any cap
         'part_max_oq': part_max_oq,
         # Every week that actually contributed a training row -- train_span alone
         # hides gaps left by excluded or missing weeks
