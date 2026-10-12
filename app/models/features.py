@@ -357,6 +357,17 @@ def acc_features(real_data):
     return df.merge(part_acc_history, how='left', on=['part', pre['pi']])
 
 
+def _encode_prefix(s):
+    # Prefixes must be numeric for the estimators. All-digit prefixes (Arlington)
+    # keep their decimal value, matching what sklearn used to coerce them to, so
+    # saved bundles still line up. Alphanumeric prefixes (Hermosillo, e.g. 'J6BS')
+    # are read as base 36 and negated so they can't collide with the decimal ones.
+    if not isinstance(s, str) or not s.isalnum():
+        return np.nan
+    if s.isdigit():
+        return float(s)
+    return -float(int(s, 36)) - 1
+
 def id_features(col: pd.Series):
     # Decompose the part number or other identifier into characteristics
     # part -> column per digit, plus indicators for L/M  
@@ -372,7 +383,7 @@ def id_features(col: pd.Series):
     pn_data[f"digit_1"] = col.str[0]
 
     for k in range(2, 8):
-        pn_data[f"prefix_{k-1}"] = col.str[1:k]
+        pn_data[f"prefix_{k-1}"] = col.str[1:k].map(_encode_prefix)
     pn_data = pd.get_dummies(pn_data, columns=["digit_1"])
     # pn_data = pn_data.fillna(0).astype(np.int8)
     return pn_data
