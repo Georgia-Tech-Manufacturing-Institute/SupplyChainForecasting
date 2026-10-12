@@ -228,6 +228,12 @@ def model_train(df: pd.DataFrame,
     if target_mode not in TARGET_MODES:
         raise ValueError(f"Unknown target_mode: {target_mode!r}. Use 'raw', 'volume', or 'qty'.")
     config['target_mode'] = target_mode  # normalize onto config so it's always saved in the bundle
+    # 'volume' multiplies by part cost; a plant with no Cost files loaded (e.g. Hermosillo)
+    # has an all-empty amount column, which otherwise fails deep in pandas with a TypeError
+    if target_mode == 'volume' and (AMT_COL not in df or df[AMT_COL].notna().sum() == 0):
+        raise ValueError(f"Target 'Volume Error' needs part cost data, but no cost is loaded "
+                         f"for {plant}. Load the plant's Cost files, or train with the "
+                         "'Error' or 'Raw' target instead.")
 
     scale_config = None
     if config.get('scale_features'):
@@ -245,6 +251,17 @@ def model_train(df: pd.DataFrame,
     X_valid   = X[valid]
     y_valid   = y[valid]
     df_valid  = df[valid]
+
+    # A threshold outside the data's predqty range leaves one split model with
+    # nothing to fit -- sklearn's "Found array with 0 sample(s)", or with a
+    # holdout, a misleading "Not enough history" from max_holdout_weeks
+    if split:
+        sides = {'A (predqty > N)': df_valid[pq] > N, 'B (predqty <= N)': df_valid[pq] <= N}
+        empty = [name for name, side in sides.items() if not side.any()]
+        if empty:
+            raise ValueError(f"Size threshold {N:g} leaves Model {empty[0]} with no training rows "
+                             f"(predqty here runs {df_valid[pq].min():g} to {df_valid[pq].max():g}). "
+                             "Pick a threshold inside that range, or turn off model splitting.")
 
     if holdout_weeks > 0:
         cap = max_holdout_weeks(df, N if split else None)

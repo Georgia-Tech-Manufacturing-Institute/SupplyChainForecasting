@@ -344,6 +344,49 @@
     </div>
 
     <div class="faq-item">
+      <div class="desc-title">Training failed with "Target 'Volume Error' needs part cost data." What do I do?</div>
+      <div class="faq-answer">
+        The <b>Volume Error</b> target multiplies each part's error by its cost, so it only works for
+        a plant whose Cost files have been loaded. Hermosillo currently has no cost data. Either:
+        <ul style="padding-left:20px; margin:6px 0 0;">
+          <li>Change <b>Target</b> to <b>Error (order − pred qty)</b> (the default) or <b>Raw</b> and
+            train again. Neither uses cost, and both work for every plant.</li>
+          <li>Or load the plant's Cost files on the Load page, then train again with Volume Error.</li>
+        </ul>
+        If cost is loaded for only some parts, Volume Error trains, but it skips every part that
+        has no cost.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="desc-title">Training failed with "Size threshold … leaves Model A (or B) with no training rows." What do I do?</div>
+      <div class="faq-answer">
+        With <b>Split model</b> on, Model A learns from rows whose predicted quantity is above the
+        <b>Size threshold</b> and Model B from rows at or below it. If the threshold is above every
+        predicted quantity in your data, Model A gets nothing to learn from. If it is below all of
+        them, Model B gets nothing. This is easy to hit when training on a short date range or on a
+        smaller plant like Hermosillo. The error message shows the predicted-quantity range in your
+        data. Either:
+        <ul style="padding-left:20px; margin:6px 0 0;">
+          <li>Set the Size threshold to a value inside that range (the default of 1 usually
+            works), or</li>
+          <li>Turn off Split model and train a single model.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="desc-title">Training failed with "No training data found for the specified date range." What do I do?</div>
+      <div class="faq-answer">
+        No week in your Earliest/Latest order date range has both waterfall predictions and posted
+        consumption for this plant. Check the plant's weeks on the Data Coverage heatmap on the Load
+        page, then pick a range inside them, or leave both dates blank to use everything. This often
+        happens after filling the form with <b>Retrain model</b> from another plant's model, since
+        that copies the other plant's dates, and plants don't all cover the same weeks.
+      </div>
+    </div>
+
+    <div class="faq-item">
       <div class="desc-title">I tried to upload a file and the upload failed, saying "database is locked." What do I do?</div>
       <div class="faq-answer">
         Close the tool and try again. Closing the browser tab isn't enough: also close the
