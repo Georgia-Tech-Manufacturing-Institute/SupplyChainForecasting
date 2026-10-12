@@ -330,6 +330,49 @@
       </div>
     </div>
 
+    <div class="faq-item">
+      <div class="desc-title">I loaded a consumption file, but its last week isn't showing on the Data Coverage heatmap. Why?</div>
+      <div class="faq-answer">
+        A consumption week only appears once it is finished. A week counts as finished when it has
+        shipments on all seven days, <em>or</em> when a later week has been loaded. Days with no
+        shipments (Sundays, holidays) count as zero once a later week arrives. The last
+        week in a file is held back until it has all seven days or until the next file is loaded.
+        This way, a file that ends mid-week doesn't record a partial total. Only real part shipments
+        (<code>ISS-SO</code>) are counted, so a shutdown week with only accounting entries shows as
+        empty.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="desc-title">I tried to upload a file and the upload failed, saying "database is locked." What do I do?</div>
+      <div class="faq-answer">
+        Close the tool and try again. Closing the browser tab isn't enough: also close the
+        Python terminal window the tool runs in, then start the tool again. This usually happens when an earlier load crashed partway
+        through and left the plant's database open.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="desc-title">Can I go to a different page while data is loading, a model is training, or an optimization is running? Will it mess up the operation?</div>
+      <div class="faq-answer">
+        Switching pages won't stop or damage the job, because the work runs in the Python terminal
+        window, not in the browser tab. What you lose by leaving depends on the job:
+        <ul style="padding-left:20px; margin:6px 0 0;">
+          <li><b>Loading data</b>: the load keeps going, but the list of loaded and skipped files
+            won't be shown when it finishes. When you come back, check the Data Coverage heatmap on
+            the Load page to confirm the new weeks are there. Wait a little before loading more
+            files, so the two loads don't overlap.</li>
+          <li><b>Training</b>: the model still trains and is saved, but the progress bar and
+            results don't come back when you return to the Train page. The new model will appear
+            in the model lists once it's done.</li>
+          <li><b>Automation and optimization</b> (Run History): these run in the background by
+            design. Leave and return whenever you like; the run card shows the progress.</li>
+        </ul>
+        In every case, <b>don't close the Python terminal window</b> until the job has finished.
+        That stops the job partway through.
+      </div>
+    </div>
+
   </div>
 </div>
 

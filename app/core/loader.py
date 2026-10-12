@@ -295,14 +295,20 @@ def autoConsumption(conn, folder, plant, overwrite=False):
     return path.name, inserted, aggregated
 
 def complete_weeks(conn):
-    '''Week indices in the landing table whose every calendar day is
-    represented. An ISO week has exactly DAYS_IN_ISO_WEEK dates, so a full
-    count of distinct orderdates means the week can no longer grow.'''
+    '''Week indices in the landing table that can no longer grow: either every
+    calendar day is represented, or data exists for a later week. The second
+    rule matters because a plant that does not ship on Sundays (or holidays)
+    never produces all DAYS_IN_ISO_WEEK dates -- once the extracts have moved
+    past a week, its missing days are genuinely zero, not still to come.'''
+    latest = conn.execute("SELECT MAX(orderidx) FROM consumption").fetchone()[0]
+    if latest is None:
+        return []
+    latest = max([int(latest), *closed_weeks(conn, 'consumption')])
     rows = conn.execute(
         """SELECT orderidx FROM consumption
            GROUP BY orderidx
-           HAVING COUNT(DISTINCT orderdate) >= ?
-           ORDER BY orderidx""", (DAYS_IN_ISO_WEEK,)).fetchall()
+           HAVING COUNT(DISTINCT orderdate) >= ? OR orderidx < ?
+           ORDER BY orderidx""", (DAYS_IN_ISO_WEEK, latest)).fetchall()
     return [int(r[0]) for r in rows]
 
 def aggregate_consumption(conn, source_filename):
