@@ -14,6 +14,7 @@
 
 <div class="guide-toc">
   <a href="#time-and-data">Training vs. Validation vs. Test</a>
+  <a href="#user-flows">Basic User Flows</a>
   <a href="#exclusions">Excluding Weeks</a>
   <a href="#run-history">Run History</a>
   <a href="#terms">Key Terms</a>
@@ -119,6 +120,114 @@
 </div>
 
 
+<!-- ── Basic user flows (moved from README) ─────────────────────── -->
+<div class="guide-section" id="user-flows">
+  <div class="guide-section-title">
+    <span class="icon" style="width:28px;height:28px;font-size:14px;">🔁</span>
+    Basic User Flows
+  </div>
+
+  <ul style="font-size:14px; line-height:1.75; padding-left:20px; margin-bottom:18px;">
+    <li><a href="#automated-workflow"><b>Automated workflow</b></a> - how it works when it works correctly.</li>
+    <li><a href="#manual-reporting"><b>Manual reporting</b></a> - feedback on the data and on model performance.</li>
+    <li><a href="#filling-missing-week-data"><b>Filling missing week data</b></a> - loading weeks by hand when the automation missed them.</li>
+  </ul>
+
+  <div class="desc-title" id="automated-workflow" style="scroll-margin-top:20px;">Automated workflow</div>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:8px;">
+    The fundamental workflow for the tool does not involve any manual steps once it is set up:
+  </p>
+  <ol style="font-size:14px; line-height:1.75; padding-left:20px; margin-bottom:12px;">
+    <li>The SCMDW folder updates with new data on Tuesdays. This includes two files per plant:
+      <code>ictrans</code> and <code>custdemand</code>. <code>ictrans</code> gives all transactions
+      recorded within the past 8 days, while <code>custdemand</code> gives the customer waterfall.</li>
+    <li>The routine in <code>app/routine.py</code> (a Python script, not a bash script) looks in that
+      folder for files named <code>[plantkey]_ictrans.txt</code> and <code>[plantkey]_custdemand.txt</code>,
+      where the plant key comes from the <code>plant_key</code> dictionary in <code>app/prefixe.py</code>
+      (e.g. Arlington → <code>AT_ictrans.txt</code>, <code>AT_custdemand.txt</code>).</li>
+    <li>For each run, the routine:
+      <ol style="margin:4px 0 0; padding-left:20px;">
+        <li>Writes an error report into <code>reports/&lt;year&gt;wk&lt;week&gt;/</code>.</li>
+        <li>Loads whichever of the two files it finds into the plant's database, then <b>moves</b> each
+          file into <code>data/&lt;plant&gt;/&lt;data type&gt;/&lt;year&gt;wk&lt;week&gt;.txt</code> as an
+          archive. If neither file is found, it stops here and logs the run as <code>no_new_data</code>.</li>
+        <li>Retrains the model (one week held out), using the configuration of the best previously saved
+          model for that plant.</li>
+        <li>Saves the model as <code>models/saved_models/&lt;plantkey&gt;_&lt;year&gt;wk&lt;week&gt;_&lt;timestamp&gt;.pkl</code>.</li>
+        <li>Makes predictions 4 weeks ahead and saves them to
+          <code>reports/&lt;year&gt;wk&lt;week&gt;/predictions_&lt;model name&gt;.xlsx</code>.</li>
+      </ol>
+    </li>
+    <li>Every step is recorded as passed/failed/skipped in <code>logs/routine_runs/</code>, which the
+      <a href="#run-history"><b>Run History</b></a> page displays.</li>
+  </ol>
+
+  <p style="font-size:14px; line-height:1.7; margin-bottom:8px;">
+    To run it by hand from a Command Prompt in the project folder (with the virtual environment
+    activated; see Step 5 of "Moving devices" in the README):
+  </p>
+  <pre style="font-size:13px; background:var(--blue-row); border-radius:4px; padding:10px 14px; overflow-x:auto; margin-bottom:12px;">python -m app.routine</pre>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
+    This takes no arguments. It runs the routine once for <b>every</b> plant in <code>plant_key</code>,
+    one after another, reading from the default incoming folder (<code>SCMDW</code> on the Desktop of
+    the Windows user running it; see <code>'incoming'</code> in <code>dirs</code> in
+    <code>app/prefixe.py</code>) and archiving into <code>data/&lt;Plant&gt;/</code>. Plants whose files
+    aren't there are logged as <code>no_new_data</code>. If one plant's run fails, the plants after it
+    are not run that time.
+  </p>
+  <div class="guide-callout">
+    <strong>Note:</strong> use <code>python -m app.routine</code>, not <code>python app\routine.py</code>;
+    the second form can't find the <code>app</code> package.
+  </div>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:22px;">
+    When started from the <b>Run History</b> page instead, the incoming folder has to be inside the
+    default incoming folder (<code>SCMDW</code> on the user's Desktop) or the project's
+    <code>data/</code> folder, because the app only lets you browse there.
+  </p>
+  <!-- TODO: how is the weekly run actually triggered on the production machine today (Task Scheduler,
+       someone clicking Run History, something else)? See Step 9 under "Moving devices" in the README
+       for a Task Scheduler setup. -->
+
+  <div class="desc-title" id="manual-reporting" style="scroll-margin-top:20px;">Manual reporting</div>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:8px;">
+    The reporting module exists to provide feedback on the tool itself and model performance. Reports
+    are run from the <b>Reports</b> page; pick a plant, an optional week range, an optional part-number
+    prefix, and optionally a folder to save the output to. The following operations are supported:
+  </p>
+  <ul style="font-size:14px; line-height:1.75; padding-left:20px; margin-bottom:22px;">
+    <li><b>Order accuracy / ordering history report</b> (<code>error_report</code>): compares historic
+      customer forecasts (waterfall) against what was actually ordered, broken out by how far ahead the
+      forecast was made (<a href="#terms">lookahead</a>). Use "max lookahead" to limit how far out to look.</li>
+    <li><b>Data coverage report</b> (<code>coverage_report</code>): shows which weeks and parts are
+      present in each table, to spot missing weeks.</li>
+    <li><b>Model performance report</b> (<code>holdout_report</code>, on the <b>Evaluate</b> page): for a
+      given trained model and test dataset, provides diagnostics about past model performance.</li>
+  </ul>
+
+  <div class="desc-title" id="filling-missing-week-data" style="scroll-margin-top:20px;">Filling missing week data</div>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:8px;">
+    Based on the data mosaic shown on the Load page, it may be evident that there is missing info. To
+    manually load data outside of the automation pipeline:
+  </p>
+  <ol style="font-size:14px; line-height:1.75; padding-left:20px; margin-bottom:12px;">
+    <li>Get the file(s) for the missing week(s).</li>
+    <li>On the <b>Load</b> page, select the plant under "Plant Source", choose the "Data Type", and
+      upload the file(s). You can select and load files individually OR just highlight all files at once.</li>
+    <li>Re-check the coverage heatmap on the Load page to confirm the gap is filled.</li>
+    <li>Retrain (Retrain page, or the next automation run) so the model sees the new data.</li>
+  </ol>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
+    Note that because the week is the smallest unit of time, a week that is only partly loaded is
+    treated as incomplete.
+  </p>
+  <p style="font-size:14px; line-height:1.7; margin-bottom:0;">
+    Manual data loading can be performed on the old <code>.prn</code> style, OR the new
+    <code>.txt</code>, pipe-delimited data warehouse format. See "Ingestion formats" under Developer
+    reference in <code>README.html</code> (project folder) for the difference between these formats.
+  </p>
+</div>
+
+
 <!-- ── Train exclusions ─────────────────────────────────────────── -->
 <div class="guide-section" id="exclusions">
   <div class="guide-section-title">
@@ -127,24 +236,35 @@
   </div>
 
   <p style="font-size:14px; line-height:1.7; margin-bottom:12px;">
-    Some weeks shouldn't be learned from: a plant shutdown, a data entry mistake, or a one-time
-    event that won't happen again. The <b>Train</b> page lets you leave those weeks out. Excluded
-    weeks are dropped from both training and validation scoring, so they neither teach the model
-    nor count for or against its score. They are still treated as real history, though: their
-    numbers still feed the "recent trend" features of the weeks that follow them.
+    Some weeks shouldn't be learned from: a plant shutdown, or a one-time event that won't happen
+    again. The <b>Train</b> page lets you leave those weeks out. Excluded weeks are dropped from
+    both training and validation scoring, so they neither teach the model nor count for or against
+    its score. They are still treated as real history, though: their numbers still feed the
+    "recent trend" features of the weeks that follow them.
   </p>
+
+  <div class="guide-callout">
+    <strong>Excluding is for correct data that isn't typical demand.</strong> If a week's numbers
+    are <em>wrong</em> (for example, a data entry mistake), don't just exclude it: fix the data.
+    Get a corrected file for that week and load it on the <b>Load</b> page with <b>Overwrite</b>
+    ticked, which replaces the week in the database. Excluding a wrong week isn't enough, because
+    its numbers still feed the trend features of the weeks after it, and every report and later
+    model still sees them.
+  </div>
 
   <div class="guide-table-wrap">
     <table class="guide-table">
       <tbody>
         <tr>
           <td class="gt-page">Exclude Consumption Weeks</td>
-          <td colspan="2">Order weeks whose actual consumption is wrong or unrepresentative.
+          <td colspan="2">Order weeks whose actual consumption is correct but unrepresentative
+            (wrong numbers should be reloaded with Overwrite instead; see above).
             Every prediction made <em>about</em> that order week is dropped.</td>
         </tr>
         <tr>
           <td class="gt-page">Exclude Waterfall Weeks</td>
-          <td colspan="2">Snapshot (release) weeks whose plan was wrong. Every prediction made
+          <td colspan="2">Snapshot (release) weeks whose plan doesn't reflect normal ordering.
+            Every prediction made
             <em>from</em> that week's waterfall is dropped, whichever order weeks it covered.</td>
         </tr>
         <tr>

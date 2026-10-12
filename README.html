@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Forecast Tool Guide</title>
+<style>
+  /* Layout: navy header band, then a sticky contents rail beside one reading column (stacks on phones).
+     Tokens mirror STARTUP_TROUBLESHOOTING.html so the two guides read as a set. */
+  :root {
+    --navy:        #1a3a5c;
+    --navy-deep:   #12283f;
+    --blue:        #2e6da4;
+    --blue-light:  #5b9bd5;
+    --blue-pale:   #cce0f5;
+    --band-text:   #cbd9e6;
+    --tan:         #b5a060;
+    --tan-pale:    #f5efdc;
+    --tan-text:    #6e5d24;
+    --bg:          #f4f6f9;
+    --card:        #ffffff;
+    --border:      #c8d4e0;
+    --text:        #1a2a3a;
+    --text-muted:  #5a7080;
+    --warn-bg:     #fdecea;
+    --warn-border: #e53935;
+    --warn-text:   #a32b26;
+    --code-bg:     #eef2f7;
+    --radius:      8px;
+    --font-ui:     "Segoe UI", -apple-system, system-ui, sans-serif;
+    --font-mono:   Consolas, "Cascadia Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --navy:        #16324f;
+      --navy-deep:   #0d2036;
+      --blue:        #6ba3d6;
+      --blue-light:  #7fb2de;
+      --blue-pale:   #1f3a52;
+      --band-text:   #b4c6d8;
+      --tan:         #cdb37c;
+      --tan-pale:    #2e2818;
+      --tan-text:    #e2cf9f;
+      --bg:          #101b28;
+      --card:        #17273a;
+      --border:      #2b415a;
+      --text:        #e6edf5;
+      --text-muted:  #93a8bd;
+      --warn-bg:     #3a1a1a;
+      --warn-border: #e0554f;
+      --warn-text:   #f0a29e;
+      --code-bg:     #0f1e2c;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --navy:        #16324f;
+    --navy-deep:   #0d2036;
+    --blue:        #6ba3d6;
+    --blue-light:  #7fb2de;
+    --blue-pale:   #1f3a52;
+    --band-text:   #b4c6d8;
+    --tan:         #cdb37c;
+    --tan-pale:    #2e2818;
+    --tan-text:    #e2cf9f;
+    --bg:          #101b28;
+    --card:        #17273a;
+    --border:      #2b415a;
+    --text:        #e6edf5;
+    --text-muted:  #93a8bd;
+    --warn-bg:     #3a1a1a;
+    --warn-border: #e0554f;
+    --warn-text:   #f0a29e;
+    --code-bg:     #0f1e2c;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  a { color: var(--blue); text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 3px;
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: .88em;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 .3em;
+    overflow-wrap: anywhere;
+  }
+
+  /* header band */
+  header.band {
+    background: linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%);
+    color: #fff;
+    padding: 40px 24px 34px;
+  }
+  header.band .inner { max-width: 1120px; margin: 0 auto; }
+  header.band .kicker {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.4px;
+    text-transform: uppercase; color: var(--blue-light); margin-bottom: 8px;
+  }
+  header.band h1 { margin: 0 0 10px; font-size: 30px; font-weight: 600; text-wrap: balance; }
+  header.band p { margin: 0; max-width: 62ch; color: var(--band-text); font-size: 15px; }
+  header.band .meta { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  header.band .meta span {
+    font-size: 12px; color: var(--band-text);
+    border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 2px 10px;
+  }
+  header.band .meta code { background: transparent; border: 0; color: #fff; padding: 0; }
+
+  /* shell */
+  .shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+  nav.toc {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 20px);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    font-size: 13.5px;
+  }
+  nav.toc .toc-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 10px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: block; padding: 3px 0 3px 12px; color: var(--text-muted);
+    text-decoration: none; border-left: 2px solid var(--border); line-height: 1.4;
+  }
+  nav.toc a:hover { color: var(--text); }
+  nav.toc a.active { color: var(--blue); border-left-color: var(--blue); font-weight: 600; }
+  nav.toc .lvl1 > a { color: var(--text); font-weight: 600; margin-top: 10px; }
+  nav.toc .lvl1:first-child > a { margin-top: 0; }
+  nav.toc .lvl3 > a { padding-left: 24px; font-size: 12.5px; }
+
+  main { min-width: 0; max-width: 760px; }
+
+  /* headings */
+  h2.part {
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--blue); margin: 56px 0 6px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  main > h2.part:first-child { margin-top: 0; }
+  h3 { font-size: 21px; font-weight: 600; margin: 34px 0 10px; text-wrap: balance; line-height: 1.3; }
+  h4 { font-size: 16.5px; font-weight: 600; margin: 30px 0 8px; text-wrap: balance; }
+  h4 .stepno {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+    color: var(--blue); background: var(--blue-pale); border-radius: 4px;
+    padding: 2px 7px; margin-right: 8px; vertical-align: 2px;
+  }
+  h4 .opt {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; margin-left: 8px; vertical-align: 2px;
+  }
+  p, ul, ol { margin: 0 0 12px; }
+  li { margin-bottom: 6px; }
+  li > ul, li > ol { margin-top: 6px; margin-bottom: 0; }
+  ol.steps > li::marker { color: var(--blue); font-weight: 700; }
+
+  /* component cards (system basics) */
+  .components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 22px; }
+  .component {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; min-width: 0;
+  }
+  .component .name { font-weight: 600; margin-bottom: 2px; }
+  .component .path { font-family: var(--font-mono); font-size: 12px; color: var(--blue); margin-bottom: 6px; overflow-wrap: anywhere; }
+  .component p { margin: 0; font-size: 13.5px; color: var(--text-muted); }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  th {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--text-muted); background: var(--code-bg);
+  }
+  td code { white-space: nowrap; }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    text-transform: uppercase; border-radius: 4px; padding: 1px 7px; white-space: nowrap;
+  }
+  .pill.yes { background: var(--blue-pale); color: var(--blue); }
+  .pill.no  { background: var(--tan-pale); color: var(--tan-text); border: 1px solid var(--tan); }
+  .pill.dont { background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-border); }
+  td .aside { display: block; color: var(--text-muted); font-size: 12.5px; margin-top: 2px; }
+
+  /* code blocks */
+  .code { position: relative; margin: 8px 0 14px; }
+  .code pre {
+    margin: 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 11px 14px; padding-right: 64px; font-family: var(--font-mono); font-size: 13px;
+    line-height: 1.55; overflow-x: auto; color: var(--text);
+  }
+  .code button.copy {
+    position: absolute; top: 7px; right: 7px;
+    font: 600 11px var(--font-ui); letter-spacing: .3px;
+    color: var(--text-muted); background: var(--card); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 8px; cursor: pointer;
+  }
+  .code button.copy:hover { color: var(--blue); border-color: var(--blue-light); }
+
+  /* callouts */
+  .callout {
+    border-radius: var(--radius); padding: 12px 16px; font-size: 14px; margin: 14px 0 18px;
+    border: 1px solid var(--border); background: var(--card);
+  }
+  .callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+  .callout .label {
+    display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .6px; margin-bottom: 3px;
+  }
+  .callout.note .label { color: var(--blue); }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
+  .callout.warn code { background: transparent; border-color: var(--warn-border); color: inherit; }
+  .callout.todo { background: var(--tan-pale); border-color: var(--tan); color: var(--tan-text); }
+  .callout.todo code { background: transparent; border-color: var(--tan); color: inherit; }
+  .callout.todo a, .callout.warn a { color: inherit; }
+
+  /* checklists */
+  ul.checklist { list-style: none; padding: 0; }
+  ul.checklist li { display: flex; gap: 10px; align-items: flex-start; }
+  ul.checklist input { margin-top: 5px; width: 16px; height: 16px; accent-color: var(--blue); flex-shrink: 0; }
+  ul.checklist label { cursor: pointer; }
+  ul.checklist input:checked + label { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--border); }
+
+  /* future work list */
+  dl.future { margin: 14px 0 0; display: grid; gap: 12px; }
+  dl.future > div {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; min-width: 0;
+  }
+  dl.future dt { font-weight: 600; margin-bottom: 4px; }
+  dl.future dd { margin: 0; font-size: 14px; color: var(--text-muted); }
+  dl.future dd ul { margin: 8px 0 0; padding-left: 18px; }
+  dl.future dd li { margin-bottom: 4px; }
+  dl.future dd strong { color: var(--text); font-weight: 600; }
+
+  .flows { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+  .flows li { margin: 0; }
+  .flows a { font-weight: 600; }
+  .flows span { color: var(--text-muted); }
+
+  /* developer reference */
+  .dev-meta { font-size: 13.5px; color: var(--text-muted); }
+  pre.sample {
+    margin: 8px 0 14px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 11px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+    overflow-x: auto; white-space: pre; color: var(--text);
+  }
+  .schema { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin: 12px 0; }
+  .schema figure { margin: 0; }
+  .schema svg { display: block; width: 100%; min-width: 860px; height: auto; color: var(--text); }
+  .schema figcaption { color: var(--text-muted); font-size: 13.5px; margin-top: 10px; max-width: 80ch; }
+  .schema svg text { font-family: var(--font-ui); font-size: 11px; fill: var(--text); }
+  .schema svg .mono { font-family: var(--font-mono); font-size: 12px; }
+  .schema svg .ttl { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+  .schema svg .muted { fill: var(--text-muted); }
+  .schema svg .col { font-size: 11px; letter-spacing: .08em; fill: var(--text-muted); font-weight: 700; }
+  .schema svg .tag { font-family: var(--font-mono); font-size: 10px; fill: var(--blue); }
+  .schema svg .box { fill: var(--card); stroke: var(--border); }
+  .schema svg .hd { fill: var(--code-bg); }
+  .schema svg .file { fill: none; stroke: var(--text-muted); stroke-dasharray: 4 3; }
+  .schema svg .flow { fill: none; stroke: var(--text); stroke-width: 1.3; }
+  .schema svg .log { fill: none; stroke: var(--text-muted); stroke-width: 1.1; stroke-dasharray: 5 4; }
+  .schema svg .join { fill: none; stroke: var(--blue); stroke-width: 1.6; stroke-dasharray: 2 4; stroke-linecap: round; }
+  .schema svg .dot { fill: var(--blue); }
+  .schema svg .ah { fill: var(--text); }
+  .schema svg .ahm { fill: var(--text-muted); }
+  .schema svg .accent { fill: var(--blue); }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 16px 0 0; }
+  .notes > div { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+  .notes .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); margin-bottom: 4px; }
+  .notes p { margin: 0; font-size: 13.5px; }
+
+  footer { color: var(--text-muted); font-size: 12.5px; margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 24px 16px 64px; }
+    nav.toc {
+      position: static; max-height: none;
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px;
+    }
+    nav.toc .lvl3 { display: none; }
+    header.band { padding: 30px 16px 26px; }
+    header.band h1 { font-size: 24px; }
+  }
+  @media (max-width: 560px) {
+    .components { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="inner">
+    <div class="kicker">Supply Chain Forecasting</div>
+    <h1>Forecast Tool Guide</h1>
+    <p>How the weekly forecast system is put together, how to run and report on it, and how to set it up on a new Windows computer.</p>
+    <div class="meta">
+      <span>App: <code>http://127.0.0.1:5000</code></span>
+      <span>Weekly run: <code>python -m app.routine</code></span>
+      <span>Python 3.12</span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+<nav class="toc" aria-label="Contents">
+  <div class="toc-title">Contents</div>
+  <ol>
+    <li class="lvl1"><a href="#system-basics">System basics</a></li>
+    <li class="lvl1"><a href="#advanced-user-flows">Advanced user flows</a></li>
+    <li class="lvl2"><a href="#change-folder-locations">Change folder locations</a></li>
+    <li class="lvl2"><a href="#new-plant">New plant</a></li>
+    <li class="lvl2"><a href="#deleting-a-plant">Deleting a plant</a></li>
+    <li class="lvl2"><a href="#feature-development">Feature development</a></li>
+    <li class="lvl2"><a href="#moving-devices">Moving devices</a></li>
+    <li class="lvl3"><a href="#what-moves-how">What moves how</a></li>
+    <li class="lvl3"><a href="#step-0-before-you-start">0 · Before you start</a></li>
+    <li class="lvl3"><a href="#step-1-install-python-312">1 · Install Python 3.12</a></li>
+    <li class="lvl3"><a href="#step-2-install-git">2 · Install Git</a></li>
+    <li class="lvl3"><a href="#step-3-download-the-code-clone-the-repository">3 · Download the code</a></li>
+    <li class="lvl3"><a href="#step-4-check-that-requirementstxt-came-down">4 · Check requirements.txt</a></li>
+    <li class="lvl3"><a href="#step-5-create-the-python-environment-and-install-packages">5 · Python environment</a></li>
+    <li class="lvl3"><a href="#step-6-copy-the-data-and-models-from-the-old-computer">6 · Copy data and models</a></li>
+    <li class="lvl3"><a href="#step-7-start-the-app-and-check-it-works">7 · Start and check</a></li>
+    <li class="lvl3"><a href="#step-8-create-a-desktop-shortcut">8 · Desktop shortcut</a></li>
+    <li class="lvl3"><a href="#step-9-optional-schedule-the-weekly-automation">9 · Schedule automation</a></li>
+    <li class="lvl3"><a href="#getting-updates-later">Getting updates later</a></li>
+    <li class="lvl3"><a href="#rolling-back-to-an-older-version">Rolling back</a></li>
+    <li class="lvl3"><a href="#backups">Backups</a></li>
+    <li class="lvl1"><a href="#developer-reference">Developer reference</a></li>
+    <li class="lvl2"><a href="#assumptions">Model assumptions</a></li>
+    <li class="lvl2"><a href="#formats">Ingestion formats</a></li>
+    <li class="lvl3"><a href="#fmt-demand">Customer demand</a></li>
+    <li class="lvl3"><a href="#fmt-trans">Transactions</a></li>
+    <li class="lvl3"><a href="#fmt-legacy">Legacy .prn reports</a></li>
+    <li class="lvl3"><a href="#fmt-cost">Cost / price lists</a></li>
+    <li class="lvl2"><a href="#schema">Plant database schema</a></li>
+    <li class="lvl2"><a href="#parsing">Parsed row formats</a></li>
+    <li class="lvl2"><a href="#filtering">Filtering</a></li>
+    <li class="lvl1"><a href="#areas-for-future-improvement">Future improvement</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ================= SYSTEM BASICS ================= -->
+<h2 class="part" id="system-basics">System basics</h2>
+
+<p>Major elements:</p>
+<div class="components">
+  <div class="component">
+    <div class="name">Forecast App</div>
+    <div class="path">app/ui/app.py</div>
+    <p>A Flask-based web interface that runs on your own computer and opens in a web browser at <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a>.</p>
+  </div>
+  <div class="component">
+    <div class="name">Automation flow</div>
+    <div class="path">app/routine.py</div>
+    <p>The weekly load → retrain → predict routine. It can be started from the Runs page in the app, or from the command line / Windows Task Scheduler.</p>
+  </div>
+  <div class="component">
+    <div class="name">Reporting</div>
+    <div class="path">app/reporting/</div>
+    <p>Order-accuracy (error) reports, data-coverage reports, and model holdout reports.</p>
+  </div>
+  <div class="component">
+    <div class="name">Per-plant databases</div>
+    <div class="path">data/processed/&lt;plant&gt;.db</div>
+    <p>Every plant has its own SQLite database, built from raw weekly files stored under <code>data/&lt;Plant&gt;/&lt;data type&gt;/</code>.</p>
+  </div>
+</div>
+
+<p>Where things live on disk (all relative to the project folder):</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Folder</th><th>What's in it</th><th>Stored in Git?</th></tr></thead>
+  <tbody>
+    <tr><td><code>app/</code></td><td>All of the code</td><td><span class="pill yes">Yes</span></td></tr>
+    <tr><td><code>data/&lt;Plant&gt;/</code></td><td>Raw weekly files (Waterfall, Consumption, Cost)</td><td><span class="pill no">No</span></td></tr>
+    <tr><td><code>data/processed/</code></td><td>One SQLite database per plant</td><td><span class="pill no">No</span></td></tr>
+    <tr><td><code>~/Desktop/SCMDW/</code></td><td>Default folder the automation checks for new extracts (outside the project)</td><td><span class="pill no">No</span></td></tr>
+    <tr><td><code>models/saved_models/</code></td><td>Trained models (<code>.pkl</code>)</td><td><span class="pill no">No</span></td></tr>
+    <tr><td><code>reports/</code></td><td>Weekly outputs, e.g. <code>reports/2026wk41/predictions_*.xlsx</code></td><td><span class="pill no">No</span><span class="aside"><code>.xlsx</code> is ignored</span></td></tr>
+    <tr><td><code>logs/routine_runs/</code></td><td>Run history shown on the Runs page</td><td><span class="pill no">No</span><span class="aside">only a couple of old examples are</span></td></tr>
+  </tbody>
+</table>
+</div>
+<p>These are the default locations; to move any of them, see <a href="#change-folder-locations">Change folder locations</a>. The "No" rows matter a lot when moving the tool to another computer; see <a href="#moving-devices">Moving devices</a>.</p>
+
+<div class="callout note"><span class="label">Day-to-day use</span><p>The basic user flows (the automated weekly workflow, manual reporting, and filling missing week data) are in the app's <strong>User Guide</strong> page, under "Basic User Flows". Open the app and click User Guide, or go to <a href="http://127.0.0.1:5000/userguide#user-flows">http://127.0.0.1:5000/userguide</a> while it's running.</p></div>
+
+<!-- ================= ADVANCED USER FLOWS ================= -->
+<h2 class="part" id="advanced-user-flows">Advanced user flows</h2>
+<div class="callout warn"><span class="label">Before you start</span><p>This is stuff that should be left to the professionals (i.e. someone who knows how to roll back a version, at least; see <a href="#rolling-back-to-an-older-version">Rolling back to an older version</a>). There are a lot of opportunities for things to go wrong, so make a copy of the <code>data/</code> and <code>models/</code> folders before starting.</p></div>
+
+<h3 id="change-folder-locations">Change folder locations</h3>
+<p>Every folder the tool reads or writes is set in one place: the <code>dirs</code> table near the top of <code>app/prefixe.py</code>. Change a line there to move that folder, e.g. to write reports to a shared drive or keep models somewhere else. No other code needs to change, and the scheduled task doesn't need to change either.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Entry</th><th>Default</th><th>What lives there</th></tr></thead>
+  <tbody>
+    <tr><td><code>'incoming'</code></td><td><code>~/Desktop/SCMDW</code></td><td>Where the weekly automation looks for new extracts.</td></tr>
+    <tr><td><code>'reports'</code></td><td><code>reports/</code></td><td>Weekly error reports and predictions (<code>&lt;year&gt;wk&lt;week&gt;/</code> subfolders), and spreadsheets saved from the Predict page.</td></tr>
+    <tr><td><code>'saved_models'</code></td><td><code>models/saved_models/</code></td><td>Every trained model (<code>.pkl</code>).</td></tr>
+    <tr><td><code>'run_logs'</code></td><td><code>logs/routine_runs/</code></td><td>Run history shown on the Run History page.</td></tr>
+    <tr><td><code>'data'</code></td><td><code>data/</code></td><td>Raw weekly files (<code>data/&lt;Plant&gt;/</code>), saved training exclusions (<code>training_exclusions.json</code>), and by default the processed databases.</td></tr>
+    <tr><td><code>'processed'</code></td><td><code>data/processed/</code></td><td>One SQLite database per plant. Follows <code>'data'</code> unless you set it separately.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>The table is in two parts. Change the entry where it's defined, and keep the format: a <code>Path(...)</code>, with <code>r'...'</code> around Windows paths so the backslashes are read literally. For example, to send reports and models to a network share:</p>
+<div class="code"><pre>dirs = {
+    'app': APP_DIR,
+    'data': PROJ_DIR / 'data',
+    'reports': Path(r'\\servername\share\Forecast\reports'),
+}
+
+dirs.update({
+    'processed': dirs['data'] / 'processed',
+    'incoming': Path(r'\\servername\share\SCDW'),
+    'saved_models': Path(r'\\servername\share\Forecast\saved_models'),
+    'run_logs': PROJ_DIR / 'logs' / 'routine_runs',
+})</pre></div>
+<p>Then:</p>
+<ol class="steps">
+  <li><strong>Move what's already there.</strong> Copy the old folder's contents into the new one before restarting. The tool doesn't look in the old place any more, so a new <code>'saved_models'</code> folder with nothing in it means the automation starts again from default settings, and an empty <code>'processed'</code> folder means no plant data.</li>
+  <li><strong>Restart the app</strong> (close its window and start it again). The paths are read once at start-up.</li>
+  <li><strong>Test it</strong> (see below).</li>
+</ol>
+<p>Things to watch for:</p>
+<ul>
+  <li><strong>Use full network paths</strong> (<code>\\servername\share\...</code>), not a mapped drive letter like <code>S:\</code>. Scheduled tasks often can't see mapped drive letters (see <a href="#step-9-optional-schedule-the-weekly-automation">Step 9</a>).</li>
+  <li><strong>Keep <code>'processed'</code> on the computer's own disk.</strong> SQLite databases on a network share or a OneDrive-synced folder can lock or corrupt. Reports, models and raw files are fine on a share.</li>
+  <li><strong>The account running the app or scheduled task needs write access</strong> to every folder except <code>'incoming'</code>, which needs read access, plus permission to move files out of it.</li>
+  <li><strong>Update <a href="#backups">Backups</a></strong> to copy from the new locations.</li>
+  <li><strong>Docker:</strong> leave <code>prefixe.py</code> alone. Inside the container the project sits at <code>/app</code>, so the app uses <code>/app/data</code>, <code>/app/models</code> and <code>/app/reports</code>. To move a folder, change the left side (the host folder) of the matching <code>volumes</code> line in <code>docker-compose.yml</code>, then restart the container. The right side must be the container path the app uses. The current file mounts to <code>/data</code>, <code>/models</code> and <code>/reports</code>, which the app doesn't read. Those need to be <code>/app/data</code>, <code>/app/models</code> and <code>/app/reports</code> before the host folders take effect.</li>
+</ul>
+
+<h4 id="change-the-automation-path">The incoming (automation) folder</h4>
+<p>Whichever folder you use for <code>'incoming'</code>, it must hold the extracts <strong>directly</strong> (e.g. <code>AT_ictrans.txt</code>, <code>AT_custdemand.txt</code>), not in subfolders. After loading, each extract is moved to <code>data/&lt;Plant&gt;/&lt;data type&gt;/</code>.</p>
+<ul>
+  <li><strong>Scheduled task / command line:</strong> <code>python -m app.routine</code> takes no arguments and always reads <code>'incoming'</code>.</li>
+  <li><strong>Run History page:</strong> you can pick a different folder in the incoming-folder box for a single run, but the page can only browse inside the <code>'incoming'</code> folder and the <code>'data'</code> folder. A network share can't be browsed here unless it is one of those two.</li>
+</ul>
+<p>To test a new incoming folder: put the week's extracts in it (or wait for the next drop), run the routine once, and check that the <strong>Run History</strong> page shows the load steps as passed rather than skipped. Don't just look for <code>no_new_data</code>: that only means the files weren't found. For the other folders, check that the next run's report, model or log appears in the new location.</p>
+
+<h3 id="new-plant">New plant</h3>
+<p>Needed: historical data in a known form. Form is either the concatenated diamond reports or the automated warehouse format; the latter is preferred.</p>
+<ol class="steps">
+  <li>Register the plant source. Open <code>app/prefixe.py</code>:
+    <ul>
+      <li>Add the name of the plant to the <code>_BASE_PLANT_SOURCES</code> list.</li>
+      <li>Double check that there is an existing entry for the plant in <code>plant_key</code> (lowercase name → key). The automation needs this key to find the plant's <code>[key]_ictrans.txt</code> / <code>[key]_custdemand.txt</code> files.</li>
+    </ul>
+  </li>
+  <li>Prepare the raw historical files for the plant, one file per week, named <code>YYYYwkWW.prn</code> or <code>.txt</code> (e.g. <code>2026wk01.prn</code>), for each data type you have (Waterfall, Consumption, Cost).</li>
+  <li>On the <strong>Load</strong> page, select the new plant under "Plant Source", choose the "Data Type", and upload the files (individually or as a folder). Files are copied to <code>data/&lt;plant&gt;/&lt;data type&gt;/</code> and parsed into that plant's database.</li>
+  <li>Repeat step 3 for each data type / batch of weeks you need to backfill.</li>
+  <li>Confirm the load on the Home page's Plant Sources table (weeks/parts counts) or the Load page's coverage heatmap.</li>
+  <li>Train a first model for the plant on the Retrain page so the automation has a configuration to start from.</li>
+</ol>
+
+<h3 id="deleting-a-plant">Deleting a plant</h3>
+<p>Given a plant "ExamplePlant", say we want to remove it and all its data. There is currently no UI action for this; it must be done by hand:</p>
+<ol class="steps">
+  <li>Remove raw data: delete the <code>data/ExamplePlant/</code> directory (the raw <code>.prn</code>/<code>.txt</code> files uploaded via the Load page).</li>
+  <li>Remove the processed database: delete <code>data/processed/exampleplant.db</code> (note the plant's database file is always named in lowercase, regardless of how the plant name is cased elsewhere).</li>
+  <li>Remove it from the plant list:
+    <ul>
+      <li>If it was added via the Home page's "Add Plant" form, remove its entry from <code>data/custom_plants.json</code>.</li>
+      <li>If it was added by hand, remove it from the <code>_BASE_PLANT_SOURCES</code> list in <code>app/prefixe.py</code>.</li>
+    </ul>
+  </li>
+  <li>Optionally, delete any saved models trained on that plant under <code>models/saved_models/</code> (check each bundle's <code>plant</code> field, e.g. via the Models page).</li>
+  <li>Restart the app so the in-memory <code>PLANT_SOURCES</code> list picks up the removal.</li>
+</ol>
+
+<h3 id="feature-development">Feature development</h3>
+<p>Model features are elaborated in <code>app/models/features.py</code>. There are 4 types of features: waterfall, consumption, accuracy, and part.</p>
+<div class="callout warn"><span class="label">No future information</span><p>The BIGGEST concern when adding new features is ENSURING that future information is NOT included. The input to both model training and prediction is a row representing a future order date (<code>orderidx</code>), made on a date (<code>predidx</code>). Each row should contain features (columns) ONLY based on information available up to the prediction date. Incorporating future information will often improve performance, but requires information that isn't actually available for real future projections!</p></div>
+<p>Feature engineering is a tantalizing method of model improvement. However, there are a lot of pitfalls within this dataset in particular.</p>
+<ul>
+  <li><strong>Seeing into the future:</strong> This is time series 101, but just to be abundantly clear: features should NEVER use information not available at the time of row creation. This is tricky with these datasets, because when the consumption and prediction data are merged, you can accidentally look into the future if you're not careful.
+    <ul><li>For example: if data is sorted according to <code>orderidx</code> rather than <code>predidx</code>, then a "prior" row might already have been ordered, giving unrealistic insight.</li></ul>
+  </li>
+  <li><strong>Lag ≠ prior week.</strong> This is one I have to catch myself doing; because customer demand is not always present for every week, sometimes the "last" value is from many weeks ago. At the time of the last week, the lagging value IS the last known prediction, but it was not forecast in the prior week.</li>
+  <li><strong>Holdout noise:</strong> a single holdout split can swing the error more than a good feature does. Compare features over several rolling origins before concluding a feature helps.</li>
+</ul>
+<p>Opportunities for new features (performed by an intern or others):</p>
+<ul>
+  <li>Exogenous features:
+    <ul>
+      <li>Weather forecasts for plants</li>
+      <li>Gas prices</li>
+      <li>OEM info: production schedules, holiday/shutdown calendars</li>
+    </ul>
+  </li>
+</ul>
+
+<!-- ================= MOVING DEVICES ================= -->
+<h3 id="moving-devices">Moving devices</h3>
+<p>This section covers moving the Forecast Tool to a new Windows computer (or setting it up on one for the first time). It is written for someone who has never used Git. Follow the steps in order and don't skip any.</p>
+
+<h4 id="what-moves-how">What moves how</h4>
+<p>The code is stored on GitHub at:<br>
+<a href="https://github.com/Georgia-Tech-Manufacturing-Institute/SupplyChainForecasting">https://github.com/Georgia-Tech-Manufacturing-Institute/SupplyChainForecasting</a></p>
+<p>Git (the tool that downloads the code from GitHub) <strong>only carries the code</strong>. The data, the trained models, the reports, and the run history are deliberately left out of Git (they're large, and the data is company information). Those have to be copied over by hand from the old computer. If you only do the Git part, the app will start but will have no plants' data and no models.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>What</th><th>How it gets to the new computer</th></tr></thead>
+  <tbody>
+    <tr><td>Code (<code>app/</code>, <code>Dockerfile</code>, <code>README.md</code>, etc.)</td><td><span class="pill yes">Git</span> Step 3</td></tr>
+    <tr><td><code>requirements.txt</code> (the list of Python packages)</td><td><span class="pill yes">Git</span> Step 3</td></tr>
+    <tr><td><code>data/</code> folder (raw files + databases)</td><td><span class="pill no">Copy by hand</span> Step 6</td></tr>
+    <tr><td><code>models/</code> folder (trained models)</td><td><span class="pill no">Copy</span> or run optimization</td></tr>
+    <tr><td><code>reports/</code> folder (past outputs)</td><td><span class="pill no">Copy by hand</span> Step 6, optional</td></tr>
+    <tr><td><code>logs/</code> folder (Runs page history)</td><td><span class="pill no">Copy by hand</span> Step 6, optional</td></tr>
+    <tr><td><code>.env</code> file</td><td><span class="pill no">Copy by hand</span> Step 6, only needed for Docker</td></tr>
+    <tr><td><code>.venv</code> folder (installed Python packages)</td><td><span class="pill dont">Do not copy</span> Recreate it on the new computer (Step 5).</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Throughout these steps:</p>
+<ul>
+  <li><strong>Command Prompt</strong> means the Windows program called "Command Prompt" (not PowerShell). Open it by clicking the Start menu, typing <code>cmd</code>, and pressing Enter. It's a black window where you type commands.</li>
+  <li>When a step says "run", type the command exactly as shown and press <strong>Enter</strong>. Wait for it to finish (you'll get a new blinking line ending in <code>&gt;</code>) before typing the next one.</li>
+  <li><code>&lt;like this&gt;</code> means "replace this, including the angle brackets, with your own value".</li>
+  <li>You can paste into Command Prompt with <strong>Ctrl+V</strong> or a right-click. The <strong>Copy</strong> button on each command box copies it for you.</li>
+</ul>
+
+<h4 id="step-0-before-you-start"><span class="stepno">0</span>Before you start</h4>
+<p>You will need:</p>
+<ul class="checklist">
+  <li><input type="checkbox" id="s0-a"><label for="s0-a">A GitHub account that has access to the <code>Georgia-Tech-Manufacturing-Institute/SupplyChainForecasting</code> repository. Contact Nikki or others to share to new users.</label></li>
+  <li><input type="checkbox" id="s0-b"><label for="s0-b">Permission to install software on the new computer (or someone from IT who can).</label></li>
+  <li><input type="checkbox" id="s0-c"><label for="s0-c">Access to the old computer, or a backup of its <code>data/</code> and <code>models/</code> folders (a USB drive or shared network drive large enough to hold them).</label></li>
+  <li><input type="checkbox" id="s0-d"><label for="s0-d">The path to the automated data drop folder, if the new computer will run the weekly automation.</label></li>
+</ul>
+<p>On the <strong>old</strong> computer, close the app first (close its black window, or press Ctrl+C in it), so the databases aren't being written to while you copy them.</p>
+
+<h4 id="step-1-install-python-312"><span class="stepno">1</span>Install Python 3.12</h4>
+<ol class="steps">
+  <li>Go to <a href="https://www.python.org/downloads/windows/">https://www.python.org/downloads/windows/</a> and download the latest <strong>Python 3.12</strong> "Windows installer (64-bit)". The tool was developed on Python 3.12; newer versions may work but haven't been tested.</li>
+  <li>Double-click the downloaded file.</li>
+  <li><strong>On the first screen, tick the box "Add python.exe to PATH".</strong> This is the most common thing people miss, and the app won't start without it.</li>
+  <li>Click <strong>Install Now</strong>. Click <strong>Yes</strong> if Windows asks for permission.</li>
+  <li>When it says "Setup was successful", click <strong>Close</strong>.</li>
+  <li>Check it worked: open a <strong>new</strong> Command Prompt and run:
+    <div class="code"><pre>python --version</pre></div>
+    It should print <code>Python 3.12.&lt;something&gt;</code>.
+    <ul>
+      <li>If it says <code>'python' is not recognized...</code>, re-run the installer, choose <strong>Modify</strong>/<strong>Repair</strong>, and make sure "Add python.exe to PATH" is ticked.</li>
+      <li>If it opens the Microsoft Store instead, open Start → type <code>Manage app execution aliases</code> → turn <strong>off</strong> both "App Installer python.exe" and "python3.exe", then open a new Command Prompt and try again.</li>
+    </ul>
+  </li>
+</ol>
+
+<h4 id="step-2-install-git"><span class="stepno">2</span>Install Git</h4>
+<ol class="steps">
+  <li>Go to <a href="https://git-scm.com/download/win">https://git-scm.com/download/win</a> and download the "64-bit Git for Windows Setup".</li>
+  <li>Double-click the downloaded file and click <strong>Yes</strong> if Windows asks for permission.</li>
+  <li>Click <strong>Next</strong> on every screen, keeping the default options, then <strong>Install</strong>, then <strong>Finish</strong>.</li>
+  <li>Check it worked: open a <strong>new</strong> Command Prompt and run:
+    <div class="code"><pre>git --version</pre></div>
+    It should print <code>git version 2.&lt;something&gt;</code>.
+  </li>
+  <li>Tell Git your name and email (these get attached to any changes you save; use your work email):
+    <div class="code"><pre>git config --global user.name "&lt;Your Name&gt;"
+git config --global user.email "&lt;you@example.com&gt;"</pre></div>
+  </li>
+</ol>
+
+<h4 id="step-3-download-the-code-clone-the-repository"><span class="stepno">3</span>Download the code (clone the repository)</h4>
+<p>"Cloning" downloads the code and keeps a link to GitHub so you can get updates later.</p>
+<ol class="steps">
+  <li>Decide where the tool will live. These instructions use <code>C:\ForecastTool</code>. Avoid putting it inside a OneDrive-synced folder (like <code>Documents</code> or <code>Desktop</code> on many work laptops): OneDrive syncing can lock the database files while the app is using them.</li>
+  <li>In Command Prompt, run these one at a time:
+    <div class="code"><pre>mkdir C:\ForecastTool
+cd /d C:\ForecastTool
+git clone https://github.com/Georgia-Tech-Manufacturing-Institute/SupplyChainForecasting.git</pre></div>
+  </li>
+  <li>The first time, a window may pop up asking you to sign in to GitHub. Choose <strong>Sign in with your browser</strong>, log in, and click <strong>Authorize</strong>. Then go back to Command Prompt.
+    <ul><li>If you get <code>Repository not found</code> or <code>Permission denied</code>, your GitHub account hasn't been given access yet (see Step 0).</li></ul>
+  </li>
+  <li>When it finishes, the code is in <code>C:\ForecastTool\SupplyChainForecasting</code>. Move into that folder:
+    <div class="code"><pre>cd /d C:\ForecastTool\SupplyChainForecasting</pre></div>
+    <strong>Every remaining command in this guide is run from this folder.</strong> If you open a new Command Prompt later, run that <code>cd /d ...</code> line first.
+  </li>
+</ol>
+
+<h4 id="step-4-check-that-requirementstxt-came-down"><span class="stepno">4</span>Check that <code>requirements.txt</code> came down</h4>
+<p><code>requirements.txt</code> lists the Python packages the tool needs, with exact versions. It comes with the code. Check it's there:</p>
+<div class="code"><pre>dir requirements.txt</pre></div>
+<p>If it says <code>File Not Found</code>, the clone in Step 3 didn't finish, or you're in the wrong folder. Re-check Step 3 before going on.</p>
+<div class="callout warn"><span class="label">Don't change the version numbers</span><p>The <code>scikit-learn</code> and <code>joblib</code> versions must match the ones the saved models were made with, or the app won't be able to load the models you copy over in Step 6. If you do upgrade them, retrain the models afterwards.</p></div>
+
+<h4 id="step-5-create-the-python-environment-and-install-packages"><span class="stepno">5</span>Create the Python environment and install packages</h4>
+<p>A "virtual environment" is a private copy of Python just for this tool, so its packages don't clash with anything else on the computer.</p>
+<ol class="steps">
+  <li>Create it (this makes a <code>.venv</code> folder inside the project):
+    <div class="code"><pre>python -m venv .venv</pre></div>
+  </li>
+  <li>Turn it on ("activate" it):
+    <div class="code"><pre>.venv\Scripts\activate.bat</pre></div>
+    The start of your Command Prompt line should now say <code>(.venv)</code>. You need to do this every time you open a new Command Prompt to work with the tool. (The launcher in Step 8 does it for you.)
+  </li>
+  <li>Install the packages:
+    <div class="code"><pre>python -m pip install --upgrade pip
+pip install -r requirements.txt</pre></div>
+    This takes a few minutes. It's done when you get the <code>(.venv) C:\ForecastTool\SupplyChainForecasting&gt;</code> line back without a red <code>ERROR</code>.
+    <ul><li>If it fails with a network/SSL error on a company network, ask IT about the proxy settings for <code>pip</code>.</li></ul>
+  </li>
+</ol>
+
+<h4 id="step-6-copy-the-data-and-models-from-the-old-computer"><span class="stepno">6</span>Copy the data and models from the old computer</h4>
+<ol class="steps">
+  <li>On the <strong>old</strong> computer, open the project folder in File Explorer (current position: <code>User/alakia/SupplyChainForecasting</code>). Optional: you can just use the Dropbox backup.</li>
+  <li>Copy these folders and files onto a USB drive or shared drive:
+    <ul>
+      <li><code>data</code> (required: all plants' raw files and databases)</li>
+      <li><code>models</code> (required: trained models; without them the automation starts from default settings)</li>
+      <li><code>reports</code> (optional: past weekly outputs)</li>
+      <li><code>logs</code> (optional: the history on the Runs page)</li>
+      <li><code>.env</code> (only if you'll run with Docker; it may be hidden, so turn on File Explorer → View → Show → Hidden items)</li>
+    </ul>
+  </li>
+  <li>On the <strong>new</strong> computer, paste them into <code>C:\ForecastTool\SupplyChainForecasting</code>, so you end up with <code>C:\ForecastTool\SupplyChainForecasting\data</code>, <code>...\models</code>, etc., right next to the <code>app</code> folder. If Windows asks about merging or replacing folders, choose to <strong>replace</strong>.</li>
+  <li>Check: <code>C:\ForecastTool\SupplyChainForecasting\data\processed</code> should contain a <code>.db</code> file for each plant (e.g. <code>arlington.db</code>), and <code>models\saved_models</code> should contain <code>.pkl</code> files.</li>
+</ol>
+<div class="callout warn"><p>Do <strong>not</strong> copy the old computer's <code>.venv</code> folder; it won't work on another computer.</p></div>
+
+<h4 id="step-7-start-the-app-and-check-it-works"><span class="stepno">7</span>Start the app and check it works</h4>
+<ol class="steps">
+  <li>In Command Prompt (in the project folder, with <code>(.venv)</code> showing), run:
+    <div class="code"><pre>python app\ui\app.py</pre></div>
+  </li>
+  <li>After a few seconds it will print <code>Running on http://127.0.0.1:5000</code>. If a <strong>Windows Firewall</strong> pop-up appears, click <strong>Allow access</strong>.</li>
+  <li>Open a web browser and go to <a href="http://127.0.0.1:5000">http://127.0.0.1:5000</a>.</li>
+  <li>Check:
+    <ul class="checklist">
+      <li><input type="checkbox" id="s7-a"><label for="s7-a">The Home page shows each plant with weeks/parts counts (not zeros).</label></li>
+      <li><input type="checkbox" id="s7-b"><label for="s7-b">The Load page's coverage heatmap matches what you saw on the old computer.</label></li>
+      <li><input type="checkbox" id="s7-c"><label for="s7-c">The Predict page lists your saved models.</label></li>
+    </ul>
+  </li>
+  <li>To stop the app, click the Command Prompt window and press <strong>Ctrl+C</strong> (or just close the window). Closing the browser tab does <strong>not</strong> stop the app.</li>
+</ol>
+<p>If something goes wrong, see <a href="STARTUP_TROUBLESHOOTING.html"><code>STARTUP_TROUBLESHOOTING.html</code></a> in the project folder (double-click it to open it in a browser).</p>
+
+<h4 id="step-8-create-a-desktop-shortcut"><span class="stepno">8</span>Create a desktop shortcut</h4>
+<p>So that nobody needs to type commands to start the tool day to day:</p>
+<ol class="steps">
+  <li>In Command Prompt, in the project folder, run <code>notepad Forecast.bat</code> and click <strong>Yes</strong> to create the file.</li>
+  <li>Paste in exactly:
+    <div class="code"><pre>@echo off
+cd /d "%~dp0"
+call .venv\Scripts\activate.bat
+echo Starting the Forecast Tool. Leave this window open while you use the tool.
+echo Close this window to stop the tool.
+start "" cmd /c "timeout /t 8 &gt;nul &amp;&amp; start http://127.0.0.1:5000"
+python app\ui\app.py
+pause</pre></div>
+    (<code>%~dp0</code> means "the folder this file is in", so it keeps working even if the project folder is moved. The <code>pause</code> at the end keeps the window open if the app crashes, so you can read the error.)
+  </li>
+  <li>Save and close Notepad.</li>
+  <li>In File Explorer, go to <code>C:\ForecastTool\SupplyChainForecasting</code>, right-click <code>Forecast.bat</code> → <strong>Show more options</strong> (Windows 11) → <strong>Send to</strong> → <strong>Desktop (create shortcut)</strong>.</li>
+  <li>Optionally, rename the desktop shortcut to "SCM Forecaster".</li>
+  <li>Double-click the shortcut to test it: a black window opens, and a few seconds later the browser opens on the app. If the browser opens before the app is ready, wait a moment and press <strong>F5</strong>.
+    <ul><li>If Windows shows a blue "Windows protected your PC" screen, click <strong>More info</strong> → <strong>Run anyway</strong>.</li></ul>
+  </li>
+</ol>
+
+<h4 id="step-9-optional-schedule-the-weekly-automation"><span class="stepno">9</span>Schedule the weekly automation<span class="opt">Optional</span></h4>
+<div class="callout warn"><p>Only do this on the one computer that should process the weekly SCDW files. <strong>Don't schedule it on two computers at once</strong>: the routine <em>moves</em> the files out of the folder it reads from, so whichever computer runs first takes them.</p></div>
+<p>One task covers all plants: each run processes every plant in <code>plant_key</code>.</p>
+<ol class="steps">
+  <li>Check where the routine will look for files. It reads the <code>'incoming'</code> entry in <code>dirs</code> in <code>app/prefixe.py</code>, which defaults to <code>SCMDW</code> on the Desktop of the Windows user the task runs as (e.g. <code>C:\Users\&lt;you&gt;\Desktop\SCMDW</code>).
+    <ul>
+      <li>If the SCDW files land on a network share instead, change that line to the share's full path, e.g. <code>'incoming': Path(r'\\servername\share\SCDW'),</code>. Use the full network path, not a mapped drive letter like <code>S:\</code>, because scheduled tasks often can't see mapped drive letters.</li>
+      <li>On work laptops where OneDrive manages the Desktop, the real Desktop may be <code>C:\Users\&lt;you&gt;\OneDrive - &lt;Company&gt;\Desktop</code>, which is <strong>not</strong> the folder the routine checks. In that case, set <code>'incoming'</code> to the exact folder path.</li>
+    </ul>
+  </li>
+  <li>Open the Start menu, type <code>Task Scheduler</code>, and open it.</li>
+  <li>In the right-hand panel, click <strong>Create Task...</strong> (not "Create Basic Task").</li>
+  <li><strong>General</strong> tab:
+    <ul>
+      <li>Name: <code>Forecast Tool - weekly</code></li>
+      <li><strong>When running the task, use the following user account</strong>: leave it as your own account. The default incoming folder is that account's Desktop, so it has to be the account that gets the files.</li>
+      <li>Select <strong>Run whether user is logged on or not</strong> if the computer may be logged out at that time.</li>
+    </ul>
+  </li>
+  <li><strong>Triggers</strong> tab → <strong>New...</strong>:
+    <ul><li><strong>Begin the task:</strong> On a schedule → <strong>Weekly</strong>, <strong>Recur every</strong> 1 weeks, tick the day, and set a time after the SCDW files normally land (they update on Tuesdays, so e.g. Tuesday afternoon or Wednesday morning). Make sure <strong>Enabled</strong> is ticked, then click <strong>OK</strong>.</li></ul>
+  </li>
+  <li><strong>Actions</strong> tab → <strong>New...</strong>:
+    <div class="table-wrap">
+    <table>
+      <tbody>
+        <tr><th scope="row">Action</th><td><strong>Start a program</strong></td></tr>
+        <tr><th scope="row">Program/script</th><td><code>C:\ForecastTool\SupplyChainForecasting\.venv\Scripts\python.exe</code><span class="aside">The virtual environment's Python, so you don't need to activate anything.</span></td></tr>
+        <tr><th scope="row">Add arguments</th><td><code>-m app.routine</code><span class="aside">Exactly this, with nothing after it.</span></td></tr>
+        <tr><th scope="row">Start in</th><td><code>C:\ForecastTool\SupplyChainForecasting</code><span class="aside">Required: without it, Python can't find the <code>app</code> package.</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+    Click <strong>OK</strong>.
+  </li>
+  <li><strong>Conditions</strong> tab: on a laptop, untick <strong>Start the task only if the computer is on AC power</strong>. Optionally tick <strong>Wake the computer to run this task</strong>.</li>
+  <li><strong>Settings</strong> tab: tick <strong>Run task as soon as possible after a scheduled start is missed</strong>, so a run missed while the computer was off happens later instead of being skipped.</li>
+  <li>Click <strong>OK</strong> and enter your Windows password if asked.</li>
+  <li>Test it: right-click the task → <strong>Run</strong>. Then open the app's <strong>Runs</strong> page; one new run per plant should appear. Plants whose extract files weren't in the folder show <code>no_new_data</code>, which is expected.
+    <ul><li>If no runs appear, look at the <strong>Last Run Result</strong> column in Task Scheduler (press F5 to refresh). <code>0x0</code> means Python ran; anything else usually means a wrong <strong>Program/script</strong> path or a missing <strong>Start in</strong> folder.</li></ul>
+  </li>
+</ol>
+
+<h4 id="getting-updates-later">Getting updates later</h4>
+<p>When the code is changed on GitHub, the new computer doesn't update by itself. To get the latest version:</p>
+<ol class="steps">
+  <li>Stop the app (close its window).</li>
+  <li>Open Command Prompt and run:
+    <div class="code"><pre>cd /d C:\ForecastTool\SupplyChainForecasting
+.venv\Scripts\activate.bat
+git pull
+pip install -r requirements.txt</pre></div>
+  </li>
+  <li>Start the app again.</li>
+</ol>
+<p>If the update changed the <code>scikit-learn</code> or <code>joblib</code> version in <code>requirements.txt</code>, retrain the models (Retrain page, or let the next automation run do it). Models saved under the old version may not load.</p>
+<p><code>git pull</code> never touches <code>data/</code>, <code>models/</code>, <code>reports/</code>, or <code>logs/</code>, since Git doesn't track them.</p>
+<div class="callout warn"><p>If <code>git pull</code> says <code>Your local changes to the following files would be overwritten</code>, someone edited code on this computer. <strong>Don't force it.</strong> Stop and contact the maintainer, because those edits will be lost otherwise.</p></div>
+
+<h4 id="rolling-back-to-an-older-version">Rolling back to an older version</h4>
+<p>If an update breaks something:</p>
+<ol class="steps">
+  <li>See the recent versions (press <strong>q</strong> to exit the list):
+    <div class="code"><pre>git log --oneline</pre></div>
+    Each line starts with a short code, e.g. <code>44e41f9 standardize common functions</code>.
+  </li>
+  <li>Switch to the version you want:
+    <div class="code"><pre>git checkout &lt;code&gt;</pre></div>
+  </li>
+  <li>Restart the app. To go back to the latest version afterwards:
+    <div class="code"><pre>git checkout main
+git pull</pre></div>
+  </li>
+</ol>
+<p>Rolling back the code doesn't roll back the data. If a bad version damaged a database, restore <code>data/processed/&lt;plant&gt;.db</code> from a backup copy.</p>
+
+<h4 id="backups">Backups</h4>
+<p>Since the data and models aren't in Git, the only copy is on the computer that runs the tool. Two things matter most:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>What</th><th>Why it matters</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>data/processed/*.db</code></td>
+      <td>One SQLite database per plant (e.g. <code>arlington.db</code>). This is everything the models train and predict from. It can be rebuilt by reloading every raw file in <code>data/&lt;Plant&gt;/</code> on the Load page, but that is slow, so keep a copy.</td>
+    </tr>
+    <tr>
+      <td><code>models/saved_models/*.pkl</code></td>
+      <td>Every saved model version. Each automation run and each save from the Train page adds a new <code>.pkl</code>; nothing deletes old ones. Keep all of them, not only the newest: the automation reuses the settings of whichever saved model for that plant had the lowest validation error, so losing older models can change the settings the next run trains with.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p>When to back up:</p>
+<ul>
+  <li>Once a week, after the weekly automation has run.</li>
+  <li>Before any of the <a href="#advanced-user-flows">advanced user flows</a>, before a <code>git pull</code>, and before rolling back.</li>
+</ul>
+<p>Close the app first (see Step 0), so no database is being written to while you copy it. Then, from a Command Prompt in the project folder, copy both into a folder named for the week, e.g. <code>2026wk41</code>, on a USB drive or shared drive:</p>
+<div class="code"><pre>robocopy data\processed "&lt;backup folder&gt;\&lt;year&gt;wk&lt;week&gt;\data\processed" *.db
+robocopy models\saved_models "&lt;backup folder&gt;\&lt;year&gt;wk&lt;week&gt;\models\saved_models" *.pkl</pre></div>
+<p>A dated folder per week keeps older database versions, so you can go back to a database from before a bad load. Delete old week folders when space runs short, but keep at least the last few.</p>
+<p>Models only load with the <code>scikit-learn</code> and <code>joblib</code> versions in <code>requirements.txt</code> (see <a href="#step-4-check-that-requirementstxt-came-down">Step 4</a>). To restore: close the app, copy the <code>.db</code> files back into <code>data\processed</code> and the <code>.pkl</code> files back into <code>models\saved_models</code>, then start the app again.</p>
+
+<!-- ================= DEVELOPER REFERENCE (moved from app/DEVELOPER_README.html) ================= -->
+<h2 class="part" id="developer-reference">Developer reference</h2>
+<p>How raw plant extracts become the weekly forecast-vs-actual data the models train on: the input file formats, the per-plant SQLite schema, the shape of parsed rows, and where data is filtered along the way.</p>
+<p class="dev-meta">Code lives in <code>app/core/</code>: <code>parser.py</code> (extract parsing), <code>processor.py</code> (fixed-width reports), <code>loader.py</code> (SQLite), <code>common.py</code> (week indices).</p>
+
+<h3 id="assumptions">Model assumptions</h3>
+<p>The week is the smallest unit of time. A week of actuals counts as complete only when every one of its days is present. Until then it is held back and is not available to train on.</p>
+<p>Weeks are ISO weeks. Each is stored as one integer index: the number of whole weeks since Monday 2000-01-03, which is ISO 2000-W01. Consecutive weeks always differ by exactly 1, including in 53-week ISO years such as 2026, so lags like <code>orderidx - 4</code> are safe. Use <code>week_to_idx</code> / <code>idx_to_week</code> in <code>common.py</code> to convert. Don't compute an index by hand. The Load and Train page scripts mirror these functions.</p>
+<p>The ISO year is used rather than the calendar year, so that a date such as 12/31 stays in the same week as the rest of its week.</p>
+<ul>
+  <li><code>orderidx</code>: the week a quantity is demanded or consumed.</li>
+  <li><code>predidx</code>: the week a forecast was released.</li>
+</ul>
+<p>The prediction dataset holds one row per unique <code>(part, orderidx, predidx)</code> triple. Each part therefore has one forecast quantity per order week, per release, per plant.</p>
+
+<h3 id="formats">Ingestion formats</h3>
+<p>Each plant has a source-system key (<code>AT</code>, <code>CU3</code>, <code>485</code>, …). Weekly extracts are named <code>{key}_custdemand.txt</code> and <code>{key}_ictrans.txt</code>. Older history arrives as fixed-width <code>YYYYwkWW.prn</code> reports. Both kinds can be loaded by hand on the Load page.</p>
+
+<h4 id="fmt-demand">Customer demand: <code>{key}_custdemand.txt</code></h4>
+<p>Pipe-delimited, with fixed header columns followed by one column per forecast week:</p>
+<pre class="sample">Ship-From|Description|Order|Line|Customer|Customer Sort|Ship-To|Name|Week#|Rel Date|SO|Ln|ShipTo|Customer Part|Part|PCR|00/00/00|...</pre>
+<p>Each <code>MM/DD/YY</code> column is an order week, and its cell is the quantity forecast for that week in the release dated <code>Rel Date</code>. <code>custDemandParse</code> melts these columns into rows (<code>orderdate</code>, <code>predqty</code>).</p>
+<pre class="sample">Ship-From|Description|Order|Line|Customer|Customer Sort|Ship-To|Name|Week#|Rel Date|SO|Ln|ShipTo|Customer Part|Part|PCR|08/03/26|08/10/26|08/17/26|08/24/26|08/31/26|09/07/26|...
+AT00|IAC Group - Arlington|GMA139|8|01008607|DAKKOTA INTEGRATED SYSTEMS|01009399|INTIER-KELLER ROAD WAREHOUSE|32|08/03/26|GMA139|8|01009399|84824532|84824532|6|0|0|0|1|0|0|...
+AT00|IAC Group - Arlington|GMA139|29|01008607|DAKKOTA INTEGRATED SYSTEMS|01009399|INTIER-KELLER ROAD WAREHOUSE|32|08/03/26|GMA139|29|01009399|84824550|84824550|26|0|0|1|0|1|1|...</pre>
+
+<h4 id="fmt-trans">Transactions: <code>{key}_ictrans.txt</code></h4>
+<p>Pipe-delimited inventory transactions. Only <code>ISS-SO</code> rows (issues to sales orders) are kept as consumption. Other types, such as <code>ISS-WO</code> below, are dropped.</p>
+<pre class="sample">Site|Item Number|Trans Date|Trans Number|Trans Type|Trans Qty|Trans UM|Loc Qty Chg|Location|End Balance
+AT00|L0413582AA04600|07/27/26|41464721|ISS-WO|-10|EA|-10|RAW|1522
+AT00|L0413592AA02600|07/27/26|41464722|ISS-WO|-10|EA|-10|WIP|524</pre>
+<p><code>process_ictrans</code> returns one row per transaction:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Column</th><th>Source field</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>trans_number</code></td><td><code>Trans Number</code></td><td>Unique source id. The landing table's primary key, so re-ingesting an overlapping extract does not double-count.</td></tr>
+    <tr><td><code>part</code></td><td><code>Item Number</code></td><td>Stripped. Must be ≥ 8 characters with no spaces.</td></tr>
+    <tr><td><code>orderdate</code></td><td><code>Trans Date</code></td><td><code>MM/DD/YY</code></td></tr>
+    <tr><td><code>orderqty</code></td><td><code>Trans Qty</code></td><td>Absolute value; issues are negative in the source.</td></tr>
+    <tr><td><code>orderidx</code></td><td>(derived)</td><td>ISO year/week of <code>orderdate</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4 id="fmt-legacy">Legacy .prn reports: <code>YYYYwkWW.prn</code></h4>
+<p>Fixed-width reports read by <code>stateParse</code> / <code>parse_fixed_width</code> in <code>processor.py</code>. The examples are in that file.</p>
+<ul>
+  <li><strong>Diamond (waterfall) report</strong>: <code>waterfallParse</code>. It carries the same fields as the demand extract and goes through the same <code>waterfallProcess</code>. A file is skipped if <code>loaded_files</code> already has it.</li>
+  <li><strong>Transactions By Item Summary</strong>: <code>process_consumption_prn</code> → <code>consumpParse</code>. These are already weekly totals and carry no transaction dates, so the week comes from the <code>YYYYwkWW</code> filename. Rows go straight into <code>consumption_agg</code> and bypass the landing table. Each row is <code>part</code>, <code>orderidx</code>, <code>orderqty</code>, with the absolute value of <code>Quantity1</code> and thousands separators stripped.</li>
+</ul>
+
+<h4 id="fmt-cost">Cost / price lists: <code>Cost/*</code></h4>
+<p>A fixed-width report in the diamond-report style. It has a header block (program name, report title, <code>Date:</code>/<code>Page:</code>/<code>Time:</code> lines), a column-header line, a <code>----</code> ruler line, then one row per price-list line. <code>stateParse</code> skips everything before the first ruler and takes column widths from the ruler's dash groups.</p>
+<div class="callout warn"><p>The ruler must have exactly one dash group per column, in this order:</p></div>
+<pre class="sample">Line LineDesc List Name Item Number UM ItemDesc PO UM Start Expire T Cur MinQty1 Amt1 MinQty2 Amt2 MinQty3 Amt3 MinQty4 Amt4 MinQty5 Amt5 BaseCurr TotalCost Remarks</pre>
+<p>Columns are matched by position, not by header text. The names above are the ones <code>costPrep</code> assigns. For example:</p>
+<pre class="sample">xxpppcrp01.p 2+                                     34.1.15.16 Item Price Report                                      Date: 01/22/26
+Page:    1                                                    Arlington                                               Time: 13:41:50
+
+
+                                                                                                                                          PC                                                                                                                                                  Price
+Line Line Desc                List     Name                         Item Number        UM Item Desc                PO                     UM Start    Expire   T Cur Min Qty[1]   Amount[1] Min Qty[2]   Amount[2] Min Qty[3]   Amount[3] Min Qty[4]   Amount[4] Min Qty[5]   Amount[5]   Base Curr      Total Cost Remarks
+---- ------------------------ -------- ---------------------------- ------------------ -- ------------------------ ---------------------- -- -------- -------- - --- ---------- ----------- ---------- ----------- ---------- ----------- ---------- ----------- ---------- ----------- ----------- --------------- ----------
+2610 GM BOLT C121 DOOR PANEL  01000474 GMCCA 1589                   42908821           EA DR FRT LH BZC CHEVY BASE                        EA 09/19/25          P USD          0     92.0592          0        0.00          0        0.00          0        0.00          0        0.00     92.0592         52.0252</pre>
+<p>After <code>costPrep</code>, three columns remain, one row per part:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Column</th><th>Source field</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>part</code></td><td><code>Item Number</code></td><td>Must match the <code>Part</code> values in the demand data.</td></tr>
+    <tr><td><code>start</code></td><td><code>Start</code></td><td>Effective date, <code>MM/DD/YY</code>. Only the latest <code>Start</code> per part is kept.</td></tr>
+    <tr><td><code>amount</code></td><td><code>Amt1</code></td><td>Unit cost at the first quantity break, parsed as a float.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Rows whose second <code>UM</code> column is <code>--</code>, whose <code>Amt1</code> is blank or whose <code>Item Number</code> is the literal header text are dropped. This removes repeated page headers and rulers.</p>
+
+<h3 id="schema">Plant database schema</h3>
+<p>Each plant gets its own SQLite file at <code>data/processed/{plant}.db</code>, created by <code>sql_setup()</code> in <code>app/core/loader.py</code>. All plants share the six tables below. These files are what <a href="#backups">Backups</a> protects.</p>
+<div class="schema">
+<figure>
+      <svg viewBox="0 0 1000 670" role="img" aria-label="Raw extracts and legacy reports land in waterfall and consumption, which are summed into waterfall_agg and consumption_agg. Cost files load directly into cost. Each load records its weeks in loaded_files. Models and reports read only waterfall_agg, consumption_agg and cost.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahm" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <text class="col" x="16" y="24">RAW FILES</text>
+        <text class="col" x="310" y="24">LANDING</text>
+        <text class="col" x="690" y="24">AGGREGATED</text>
+
+        <rect class="file" x="16" y="60" width="184" height="44" rx="4"/>
+        <text class="mono" x="26" y="79">{key}_custdemand.txt</text>
+        <text class="muted" x="26" y="95">weekly demand extract</text>
+
+        <rect class="file" x="16" y="140" width="184" height="44" rx="4"/>
+        <text class="mono" x="26" y="159">YYYYwkWW.prn</text>
+        <text class="muted" x="26" y="175">legacy diamond report</text>
+
+        <rect class="file" x="16" y="320" width="184" height="44" rx="4"/>
+        <text class="mono" x="26" y="339">{key}_ictrans.txt</text>
+        <text class="muted" x="26" y="355">transactions (ISS-SO)</text>
+
+        <rect class="file" x="16" y="440" width="184" height="44" rx="4"/>
+        <text class="mono" x="26" y="459">YYYYwkWW.prn</text>
+        <text class="muted" x="26" y="475">legacy weekly consumption</text>
+
+        <rect class="file" x="16" y="556" width="184" height="44" rx="4"/>
+        <text class="mono" x="26" y="575">Cost/*</text>
+        <text class="muted" x="26" y="591">price lists</text>
+
+        <rect class="box" x="310" y="40" width="230" height="176" rx="4"/>
+        <path class="hd" d="M314,40 h222 a4,4 0 0 1 4,4 v24 h-230 v-24 a4,4 0 0 1 4,-4 z"/>
+        <text class="ttl" x="322" y="59">waterfall</text>
+        <text class="mono" x="322" y="82">part</text><text class="mono muted" x="440" y="82">TEXT</text><text class="tag" x="528" y="82" text-anchor="end">UQ</text>
+        <text class="mono" x="322" y="102">orderidx</text><text class="mono muted" x="440" y="102">INT</text><text class="tag" x="528" y="102" text-anchor="end">UQ</text>
+        <text class="mono" x="322" y="122">reldate</text><text class="mono muted" x="440" y="122">DATE</text><text class="tag" x="528" y="122" text-anchor="end">UQ</text>
+        <text class="mono" x="322" y="142">shipto</text><text class="mono muted" x="440" y="142">TEXT</text><text class="tag" x="528" y="142" text-anchor="end">UQ</text>
+        <text class="mono" x="322" y="162">predidx</text><text class="mono muted" x="440" y="162">INT</text>
+        <text class="mono" x="322" y="182">qty</text><text class="mono muted" x="440" y="182">INT</text>
+        <text class="mono" x="322" y="202">pcr</text><text class="mono muted" x="440" y="202">INT</text>
+
+        <rect class="box" x="310" y="300" width="230" height="136" rx="4"/>
+        <path class="hd" d="M314,300 h222 a4,4 0 0 1 4,4 v24 h-230 v-24 a4,4 0 0 1 4,-4 z"/>
+        <text class="ttl" x="322" y="319">consumption</text>
+        <text class="mono" x="322" y="342">trans_number</text><text class="mono muted" x="440" y="342">TEXT</text><text class="tag" x="528" y="342" text-anchor="end">PK</text>
+        <text class="mono" x="322" y="362">part</text><text class="mono muted" x="440" y="362">TEXT</text>
+        <text class="mono" x="322" y="382">orderdate</text><text class="mono muted" x="440" y="382">DATE</text>
+        <text class="mono" x="322" y="402">orderqty</text><text class="mono muted" x="440" y="402">INT</text>
+        <text class="mono" x="322" y="422">orderidx</text><text class="mono muted" x="440" y="422">INT</text><text class="tag" x="528" y="422" text-anchor="end">IDX</text>
+
+        <rect class="box" x="310" y="530" width="230" height="96" rx="4"/>
+        <path class="hd" d="M314,530 h222 a4,4 0 0 1 4,4 v24 h-230 v-24 a4,4 0 0 1 4,-4 z"/>
+        <text class="ttl" x="322" y="549">cost</text>
+        <circle class="dot" cx="526" cy="544" r="4"/>
+        <text class="mono" x="322" y="572">part</text><text class="mono muted" x="440" y="572">TEXT</text><text class="tag" x="528" y="572" text-anchor="end">UQ</text>
+        <text class="mono" x="322" y="592">amount</text><text class="mono muted" x="440" y="592">REAL</text>
+        <text class="mono" x="322" y="612">start</text><text class="mono muted" x="440" y="612">DATE</text><text class="tag" x="528" y="612" text-anchor="end">UQ</text>
+
+        <rect class="box" x="690" y="40" width="220" height="156" rx="4"/>
+        <path class="hd" d="M694,40 h212 a4,4 0 0 1 4,4 v24 h-220 v-24 a4,4 0 0 1 4,-4 z"/>
+        <text class="ttl" x="702" y="59">waterfall_agg</text>
+        <circle class="dot" cx="896" cy="54" r="4"/>
+        <text class="mono" x="702" y="82">part</text><text class="mono muted" x="810" y="82">TEXT</text><text class="tag" x="898" y="82" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="102">orderidx</text><text class="mono muted" x="810" y="102">INT</text><text class="tag" x="898" y="102" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="122">predidx</text><text class="mono muted" x="810" y="122">INT</text><text class="tag" x="898" y="122" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="142">predqty</text><text class="mono muted" x="810" y="142">INT</text>
+        <text class="mono" x="702" y="162">augmented</text><text class="mono muted" x="810" y="162">BOOL</text><text class="tag" x="898" y="162" text-anchor="end">=0</text>
+        <text class="mono" x="702" y="182">pcr</text><text class="mono muted" x="810" y="182">INT</text>
+
+        <rect class="box" x="690" y="300" width="220" height="96" rx="4"/>
+        <path class="hd" d="M694,300 h212 a4,4 0 0 1 4,4 v24 h-220 v-24 a4,4 0 0 1 4,-4 z"/>
+        <text class="ttl" x="702" y="319">consumption_agg</text>
+        <circle class="dot" cx="896" cy="314" r="4"/>
+        <text class="mono" x="702" y="342">part</text><text class="mono muted" x="810" y="342">TEXT</text><text class="tag" x="898" y="342" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="362">orderidx</text><text class="mono muted" x="810" y="362">INT</text><text class="tag" x="898" y="362" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="382">orderqty</text><text class="mono muted" x="810" y="382">INT</text>
+
+        <rect class="box" x="690" y="500" width="220" height="116" rx="4"/>
+        <path class="hd" d="M694,500 h212 a4,4 0 0 1 4,4 v24 h-220 v-24 a4,4 0 0 1 4,-4 z"/>
+        <text class="ttl" x="702" y="519">loaded_files</text>
+        <text class="mono" x="702" y="542">filename</text><text class="mono muted" x="810" y="542">TEXT</text>
+        <text class="mono" x="702" y="562">data_type</text><text class="mono muted" x="810" y="562">TEXT</text><text class="tag" x="898" y="562" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="582">week_idx</text><text class="mono muted" x="810" y="582">INT</text><text class="tag" x="898" y="582" text-anchor="end">UQ</text>
+        <text class="mono" x="702" y="602">load_date</text><text class="mono muted" x="810" y="602">DATE</text>
+
+        <line class="flow" x1="200" y1="82" x2="308" y2="82" marker-end="url(#ah)"/>
+        <line class="flow" x1="200" y1="162" x2="308" y2="162" marker-end="url(#ah)"/>
+        <text class="muted" x="255" y="154" text-anchor="middle">if file not logged</text>
+        <line class="flow" x1="200" y1="342" x2="308" y2="342" marker-end="url(#ah)"/>
+        <text class="muted" x="255" y="334" text-anchor="middle">open weeks only</text>
+        <path class="flow" d="M200,462 H672 V370 H688" marker-end="url(#ah)"/>
+        <text class="muted" x="436" y="455" text-anchor="middle">already weekly totals; bypasses landing</text>
+        <line class="flow" x1="200" y1="578" x2="308" y2="578" marker-end="url(#ah)"/>
+        <text class="muted" x="255" y="570" text-anchor="middle">latest start per part</text>
+
+        <line class="flow" x1="540" y1="120" x2="688" y2="120" marker-end="url(#ah)"/>
+        <text x="610" y="96" text-anchor="middle">SUM per part,</text>
+        <text x="610" y="109" text-anchor="middle">orderidx, predidx</text>
+        <text class="muted" x="610" y="136" text-anchor="middle">qty → predqty</text>
+
+        <line class="flow" x1="540" y1="345" x2="688" y2="345" marker-end="url(#ah)"/>
+        <text x="605" y="318" text-anchor="middle">week complete</text>
+        <text class="muted" x="605" y="331" text-anchor="middle">(7 distinct dates)</text>
+        <text x="605" y="362" text-anchor="middle">SUM, += on conflict</text>
+        <text class="muted" x="605" y="375" text-anchor="middle">then DELETE rows</text>
+
+        <path class="log" d="M910,120 H965 V580 H912" marker-end="url(#ahm)"/>
+        <path class="log" d="M910,350 H935 V548 H912" marker-end="url(#ahm)"/>
+        <text class="muted" transform="translate(984 350) rotate(-90)" text-anchor="middle">logs each predidx week</text>
+        <text class="muted" transform="translate(954 450) rotate(-90)" text-anchor="middle">logs orderidx</text>
+
+        <line class="join" x1="800" y1="200" x2="800" y2="296"/>
+        <circle class="dot" cx="800" cy="200" r="3"/>
+        <circle class="dot" cx="800" cy="296" r="3"/>
+        <text x="790" y="244" text-anchor="end" class="accent">joined on part + orderidx</text>
+        <text class="muted" x="790" y="258" text-anchor="end">forecast vs. actual</text>
+
+        <circle class="dot" cx="20" cy="651" r="4"/>
+        <text class="muted" x="30" y="655">read by create_dataset, reporting and the UI</text>
+        <text class="tag" x="300" y="655">UQ</text>
+        <text class="muted" x="320" y="655">part of the table's UNIQUE key (inserts use OR IGNORE)</text>
+        <line class="log" x1="640" y1="651" x2="670" y2="651"/>
+        <text class="muted" x="678" y="655">week recorded in loaded_files</text>
+      </svg>
+  <figcaption>Only the three tables marked with a dot are read downstream. <code>waterfall</code> and <code>consumption</code> are written by the loaders and never queried by models. A consumption week moves to <code>consumption_agg</code> only once all seven of its dates are present. Until then its transactions wait in the landing table, and later extracts keep adding to them.</figcaption>
+</figure>
+</div>
+<div class="notes">
+  <div>
+    <div class="label">No foreign keys</div>
+    <p>Tables relate only through <code>part</code> and the week indices <code>orderidx</code> and <code>predidx</code>. SQLite enforces none of these links, so a part can exist in one table and be missing from another. <code>filter_disjoint()</code> trims those parts at dataset time.</p>
+  </div>
+  <div>
+    <div class="label">loaded_files is per week</div>
+    <p>Its key is <code>(data_type, week_idx)</code>, not the filename. A waterfall extract writes one row per release week it covers, and a consumption load writes one per closed order week. The loaders read it back to skip weeks that are already closed. <code>cost</code> loads are not logged.</p>
+  </div>
+  <div>
+    <div class="label">Schema version</div>
+    <p><code>sql_setup()</code> runs <code>migrate_schema()</code>, which upgrades older databases in place. Version 1 moved the old pre-aggregated <code>consumption</code> into <code>consumption_agg</code>. Version 2 re-encoded every week index from <code>year * 52 + week</code> to weeks since 2000-01-03. It dropped rows stored at old index <code>105405</code>, where 2026-W53 and 2027-W01 had been merged.</p>
+  </div>
+</div>
+
+<h3 id="parsing">Parsed row formats</h3>
+<p>Both waterfall sources (the demand extract and the legacy diamond report) pass through <code>waterfallProcess</code> in <code>parser.py</code>. That function lower-cases and normalises column names, computes the week indices and keeps only the columns in <code>WATERFALL_KEEP</code>. These are the columns of the <code>waterfall</code> landing table:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>part</code></td><td>Part number, cast to <code>str</code> and stripped.</td></tr>
+    <tr><td><code>reldate</code></td><td>Release date of the forecast.</td></tr>
+    <tr><td><code>shipto</code></td><td>Ship-to location. One part can be forecast separately for several destinations.</td></tr>
+    <tr><td><code>pcr</code></td><td>PCR value from the source, as an integer.</td></tr>
+    <tr><td><code>predqty</code></td><td>Forecast quantity for the order week, from the melted date columns. Stored as <code>qty</code> in the landing table.</td></tr>
+    <tr><td><code>predidx</code></td><td>Week index of the release: ISO year/week of <code>reldate</code>.</td></tr>
+    <tr><td><code>orderidx</code></td><td>Week index of the order: ISO year/week of <code>orderdate</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+<p><code>Week#</code>, <code>SO</code>, <code>Ln</code>, <code>CustomerPart</code>, <code>orderdate</code> and the intermediate <code>lookahead</code>/year/week columns are dropped once the indices exist. The result is deduplicated. Landing rows are unique on <code>(part, orderidx, reldate, shipto)</code>. <code>waterfall_agg</code> then sums across ship-tos to the <code>(part, orderidx, predidx)</code> triple the models use.</p>
+<p>The other parsers produce simpler shapes from the same fixed-width reader. The consumption shapes are in <a href="#fmt-trans">Transactions</a> and <a href="#fmt-legacy">Legacy .prn reports</a>, and the cost shape is in <a href="#fmt-cost">Cost / price lists</a>.</p>
+
+<h3 id="filtering">Filtering</h3>
+<p>Data is filtered at several points, each for a different reason. Rows that are clearly not useful (wrong transaction type, malformed part numbers, page furniture from reports) are dropped before SQL ingestion. Everything else is kept at full extent in the database, because features such as rolling values need the full history. Narrowing to a modelling set happens later, at dataset time.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Stage</th><th>Where</th><th>What is dropped</th></tr></thead>
+  <tbody>
+    <tr><td>Parse: demand</td><td><code>waterfallProcess</code></td><td>Forecast cells whose order date is 14 or more days before the release date (<code>lookahead.days &le; -14</code>). Exact duplicate rows.</td></tr>
+    <tr><td>Parse: transactions</td><td><code>process_ictrans</code></td><td>Anything that is not <code>ISS-SO</code>. Parts that are blank, contain spaces or are shorter than 8 characters. Duplicate <code>trans_number</code>s.</td></tr>
+    <tr><td>Parse: legacy consumption</td><td><code>filter_partno</code></td><td>Parts that contain no digit, do not start with <code>L</code>, <code>M</code>, <code>2</code>, <code>4</code> or <code>8</code>, or contain whitespace, <code>_</code> or <code>.</code>. Rows with blank quantity.</td></tr>
+    <tr><td>Parse: cost</td><td><code>costPrep</code></td><td>Header and ruler rows, and blank <code>Amt1</code>. All but the latest <code>Start</code> per part.</td></tr>
+    <tr><td>Load</td><td><code>loader.py</code></td><td>Rows that hit a UNIQUE key (<code>INSERT OR IGNORE</code>). Consumption weeks already closed in <code>loaded_files</code>.</td></tr>
+    <tr><td>Dataset</td><td><code>filter_disjoint</code></td><td>Parts that appear in only one of waterfall or consumption.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ================= FUTURE ================= -->
+<h2 class="part" id="areas-for-future-improvement">Areas for future improvement</h2>
+<dl class="future">
+  <div>
+    <dt>Alternative cost functions</dt>
+    <dd>Currently, the objective function can be chosen between minimizing error (number of units difference between predicted and actual orders).
+      <ul>
+        <li><strong>Higher short-supply penalties:</strong> Punish the model much more if it underpredicts stock. This will encourage the model to take fewer risks.</li>
+        <li><strong>Part-specific weights:</strong> Weight the part numbers such that the most important parts (e.g. by cost or volume) are the most impactful to the model. Error is currently concentrated: a small number of parts (~50) carries most (~60%) of the error.</li>
+        <li><strong>New metrics for error reporting:</strong> Mean absolute error and mean squared error consider undershoot/overshoot equivalent. While weighting and penalties will just make the impact of certain parts/undershoot result in a larger MAE for the same amount of error, it might also be useful to look at this in terms of each metric individually.</li>
+      </ul>
+    </dd>
+  </div>
+  <div>
+    <dt>Resiliency against incomplete data</dt>
+    <dd>The current model updates on a week-by-week basis; we chose this because although data is updated daily, predictions are made per location while ordering is aggregate, making validation per prediction impossible. However, this requires us to wait until all possible week data is known prior to making new predictions or validating old ones.</dd>
+  </div>
+  <div>
+    <dt>Plant-to-plant model transferability</dt>
+    <dd>The current model requires part numbers to be distinct to work; duplicated part numbers result in misattributed demand/ordering. While using internal part numbers might enable data to be aggregated, consideration should be given as to the value of insight relating to this.</dd>
+  </div>
+  <div>
+    <dt>Dynamic cost</dt>
+    <dd>When cost data was delivered, I was instructed to only use the latest cost. However, registering costs to the date of the prediction/forecast may be important, I'm not sure.</dd>
+  </div>
+  <div>
+    <dt>Improved augmentation strategies</dt>
+    <dd>The current approach uses either last value or prior-year order to project a forward customer order. While this is not the only feature used for these forward projections, these choices can be pretty impactful the further in the future projections are made. For example, for the "last value" strategy, a PN which is otherwise only ordered every other week might end up with a multi-week forecast of zero or double stock.</dd>
+  </div>
+  <div>
+    <dt>Broader hyperparameter search</dt>
+    <dd><code>app/optimize.py</code> samples a fixed search space at random. Future work could expand the parameter sets and use a smarter search (e.g. Bayesian or gradient-based).</dd>
+  </div>
+</dl>
+
+<footer>Combines <code>README.md</code> and the former <code>app/DEVELOPER_README.html</code>. The basic user flows now live on the app's User Guide page.</footer>
+
+</main>
+</div>
+
+<script>
+  // Copy buttons on every command box
+  document.querySelectorAll('.code').forEach(function (box) {
+    var pre = box.querySelector('pre');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function () {
+      var text = pre.textContent;
+      var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1400); };
+      var fallback = function () {
+        var r = document.createRange(); r.selectNodeContents(pre);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        btn.textContent = 'Press Ctrl+C';
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else { fallback(); }
+    });
+    box.appendChild(btn);
+  });
+
+  // Highlight the current section in the contents rail
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+    var targets = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); });
+    function update() {
+      var current = 0;
+      for (var i = 0; i < targets.length; i++) {
+        if (targets[i] && targets[i].getBoundingClientRect().top < 120) current = i;
+      }
+      links.forEach(function (a, i) { a.classList.toggle('active', i === current); });
+    }
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+  })();
+</script>
+</body>
+</html>
