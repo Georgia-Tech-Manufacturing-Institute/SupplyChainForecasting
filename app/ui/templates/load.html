@@ -94,6 +94,24 @@
             </div>
           </td>
         </tr>
+        <tr>
+          <th class="row-label">Overwrite</th>
+          <td>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" name="overwrite" id="overwrite"
+                     {% if request.form.get('overwrite') == 'on' %}checked{% endif %}>
+              Replace data already loaded for the same weeks
+            </label>
+            <div class="hint-weekly" style="margin-top:4px; font-size:12px; color:var(--text-muted);">
+              Off: weeks already in the database are skipped. On: each week the file
+              carries is deleted and reloaded from this file.
+            </div>
+            <div class="hint-cost" style="margin-top:4px; font-size:12px; color:var(--text-muted);">
+              Off: an existing price for the same part and Start date is kept.
+              On: it is replaced by this file's price.
+            </div>
+          </td>
+        </tr>
       </tbody>
     </table>
 
@@ -135,8 +153,13 @@
           Files must follow the naming convention <code>YYYYwkWW.prn</code>
           (e.g. <code>2026wk01.prn</code>, <code>2024wk52.prn</code>).
           Files are deposited under <code>data/&lt;plant&gt;/raw/&lt;data type&gt;/</code>
-          then loaded into a processed database. 
-          <br> Currently, no strategies exist for item to item data management; still TODO: allow overwrite of data - for now, what you upload is permanently in the system - exerise caution!
+          then loaded into a processed database.
+          <br> By default, weeks that are already loaded are skipped. Tick
+          <b>Overwrite</b> to replace them: waterfall files replace every
+          prediction week they carry, and consumption files replace the weeks
+          they carry. A transaction extract replaces only the weeks it covers
+          Monday through Sunday, so a partial week at either end never wipes a
+          complete one.
       </div>
     </div>
 

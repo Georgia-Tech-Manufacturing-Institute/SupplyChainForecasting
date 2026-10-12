@@ -276,6 +276,7 @@ def load():
     if request.method == "POST":
         plant_source = request.form.get("plant_source", "").strip()
         data_type    = request.form.get("data_type",    "").strip()
+        overwrite    = request.form.get("overwrite") == "on"
         files        = [f for f in request.files.getlist("files") if f.filename]
 
         if not plant_source or not data_type:
@@ -299,11 +300,13 @@ def load():
                     for path in saved:
                         try:
                             if data_type == "Consumption":
-                                file_results += consumption_to_sql(conn, path, plant=plant_source)
+                                file_results += consumption_to_sql(conn, path, plant=plant_source,
+                                                                   overwrite=overwrite)
                             elif data_type == "Waterfall":
-                                file_results += waterfall_to_sql(conn, path, plant=plant_source)
+                                file_results += waterfall_to_sql(conn, path, plant=plant_source,
+                                                                 overwrite=overwrite)
                             elif data_type == "Cost":
-                                file_results += cost_to_sql(conn, path)
+                                file_results += cost_to_sql(conn, path, overwrite=overwrite)
                         except ValueError as e:
                             # resolve_sources rejects unsupported extensions
                             file_results.append(file_result(path.name, False, str(e)))
@@ -311,7 +314,8 @@ def load():
                     conn.close()
                 n_loaded = sum(r['loaded'] for r in file_results)
                 result = (f"Loaded {n_loaded} of {len(file_results)} file(s) "
-                          f"into {plant_source} {data_type}.")
+                          f"into {plant_source} {data_type}"
+                          f"{' (overwriting)' if overwrite else ''}.")
             except Exception as e:
                 error = str(e)
 

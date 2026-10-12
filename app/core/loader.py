@@ -165,6 +165,49 @@ def already_loaded(conn, filename, data_type):
     return filename in set(loaded.filename)
 
 
+# Tables holding each data type's weekly rows, with the week column that
+# loaded_files records for that type.
+WEEK_TABLES = {'consumption': [('consumption', 'orderidx'), ('consumption_agg', 'orderidx')],
+               'waterfall':   [('waterfall', 'predidx'), ('waterfall_agg', 'predidx')]}
+
+
+def clear_weeks(conn, data_type, weeks):
+    '''
+    Deletes everything stored for `weeks` of `data_type` -- landing rows,
+    totals and the loaded_files record -- so that an overwrite replaces those
+    weeks. Without this an overwrite would be a no-op under INSERT OR IGNORE,
+    or, for consumption, be summed on top of the existing weekly totals.
+
+    Call it only once the replacement file has parsed, so a bad file cannot
+    leave the weeks empty.
+    '''
+    weeks = sorted(int(w) for w in weeks)
+    for widx in weeks:
+        for table, col in WEEK_TABLES[data_type]:
+            conn.execute(f"DELETE FROM {table} WHERE {col} = ?", (widx,))
+        conn.execute("DELETE FROM loaded_files WHERE data_type = ? AND week_idx = ?",
+                     (data_type, widx))
+    conn.commit()
+    if weeks:
+        print(f"     Overwrite: cleared {len(weeks)} {data_type} week(s) {weeks[0]}-{weeks[-1]}")
+    return weeks
+
+
+def spanned_weeks(raw):
+    '''
+    Weeks of a transaction extract that it covers Monday through Sunday. An
+    extract that starts or ends mid-week carries only part of its edge weeks;
+    overwriting those would swap a full week's total for a partial one, so
+    they are left to the usual skip-if-loaded rule.
+    '''
+    first = raw['orderdate'].min().normalize()
+    last = raw['orderdate'].max().normalize()
+    weeks = pd.Series(raw[oi].unique())
+    mondays = pd.Timestamp(WEEK_EPOCH) + pd.to_timedelta(7 * weeks, unit='D')
+    spanned = (mondays >= first) & (mondays + pd.Timedelta(days=6) <= last)
+    return sorted(int(w) for w in weeks[spanned])
+
+
 def land_waterfall(conn, wf, source_filename):
     '''
     Folds already-parsed waterfall rows into the waterfall tables.
@@ -203,7 +246,8 @@ def load_waterfall_prn(conn, file, overwrite=False):
     report the weeks are read from the rows, not the filename.
 
     Here the filename does identify the contents, so a file already recorded
-    in loaded_files is skipped unless overwrite=True.
+    in loaded_files is skipped unless overwrite=True, which replaces every
+    prediction week the report carries.
     '''
     file = Path(file)
     if not overwrite and already_loaded(conn, file.name, 'waterfall'):
@@ -211,7 +255,10 @@ def load_waterfall_prn(conn, file, overwrite=False):
               "behavior by setting overwrite=True")
         return 0
     print(f"     Parsing {file.name}")
-    return land_waterfall(conn, waterfallProcess(waterfallParse(file)), file.name)
+    wf = waterfallProcess(waterfallParse(file))
+    if overwrite and len(wf) > 0:
+        clear_weeks(conn, 'waterfall', wf[pi].unique())
+    return land_waterfall(conn, wf, file.name)
 
 
 def autoWaterfall(conn, folder, plant):
@@ -237,7 +284,9 @@ def load_ictrans(conn, file, overwrite=False):
 
     1. Parse the extract with process_ictrans.
     2. Drop any week already recorded as loaded in loaded_files -- those weeks
-       are closed and their totals are already in consumption_agg.
+       are closed and their totals are already in consumption_agg. With
+       overwrite=True, the weeks the extract spans end to end are cleared and
+       re-landed instead (see spanned_weeks); partial edge weeks still drop.
     3. Insert what remains into the `consumption` landing table. Duplicate
        transactions are rejected by the trans_number primary key, so an extract
        that overlaps last week's is harmless even if step 2 lets it through.
@@ -256,7 +305,9 @@ def load_ictrans(conn, file, overwrite=False):
         return 0, [], 0
 
     closed = closed_weeks(conn, 'consumption')
-    if closed and not overwrite:
+    if overwrite:
+        closed -= set(clear_weeks(conn, 'consumption', spanned_weeks(raw)))
+    if closed:
         already = raw[raw[oi].isin(closed)]
         if len(already) > 0:
             weeks = sorted(already[oi].unique())
@@ -406,13 +457,16 @@ def consumption_to_sql(conn, source, plant='arlington', overwrite=False):
                 results.append(file_result(path.name, False, 'no usable part rows found'))
                 continue
 
+            replaced = overwrite and idx in closed
+            if overwrite:
+                clear_weeks(conn, 'consumption', [idx])
             d_rows = load_to_sql(conn, 'consumption_agg', agg)
             print(f"          Changed {d_rows} rows in consumption_agg")
             update_loaded_files(conn, path.name, 'consumption', idx)
             conn.commit()
             closed.add(idx)
-            results.append(file_result(path.name, True, f'{yr}W{wk}; {d_rows} rows written',
-                                       agg['part'].nunique()))
+            detail = f'{yr}W{wk}; {d_rows} rows written' + (' (replaced)' if replaced else '')
+            results.append(file_result(path.name, True, detail, agg['part'].nunique()))
         except Exception as e:
             print(f"     Failed {path.name}: {e}")
             results.append(file_result(path.name, False, f'error: {e}'))
@@ -475,6 +529,10 @@ def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
       * YYYYwkWW.prn -- a legacy diamond report. Its rows carry their own
         release dates too, so the filename only identifies the file.
 
+    With overwrite=True, every prediction week a file carries is cleared
+    before it lands, so the file replaces those snapshots instead of being
+    merged into them.
+
     Returns one file_result per file considered.
     '''
     print("Bulk waterfall processing: ")
@@ -507,9 +565,12 @@ def waterfall_to_sql(conn, source, plant='arlington', overwrite=False):
                 print("     No demand found")
                 results.append(file_result(path.name, False, 'no demand rows found'))
                 continue
+            replaced = clear_weeks(conn, 'waterfall', wf[pi].unique()) if overwrite else []
             rows = land_waterfall(conn, wf, path.name)
             detail = (f'{rows} new waterfall rows' if rows
                       else 'no new rows (all already loaded)')
+            if replaced:
+                detail += f'; replaced {len(replaced)} prediction week(s)'
             results.append(file_result(path.name, True, detail, wf['part'].nunique()))
         except Exception as e:
             print(f"     Failed {path.name}: {e}")
@@ -533,13 +594,15 @@ def update_loaded_files(conn, filename, ftype, widx, conflict='IGNORE'):
     conn.commit()
 
 
-def cost_to_sql(conn, source):
+def cost_to_sql(conn, source, overwrite=False):
     '''
     Loads price lists from a single file or a directory of them.
 
     Cost files are standalone lists rather than weekly reports -- costPrep
     already keeps only the latest Start per part -- so there is no week to
-    record in loaded_files and no naming convention to satisfy.
+    record in loaded_files and no naming convention to satisfy. With
+    overwrite=True, a price already stored for the same part and Start is
+    replaced rather than kept.
 
     Returns one file_result per file considered.
     '''
@@ -549,7 +612,8 @@ def cost_to_sql(conn, source):
             cost_map = costPrep(path)
             cost_map = cost_map.rename({'Amt1': 'Amount'}, axis=1)
             cost_map.Start = cost_map.Start.astype(str)
-            rows = load_to_sql(conn, 'cost', cost_map)
+            rows = load_to_sql(conn, 'cost', cost_map,
+                               conflict='REPLACE' if overwrite else 'IGNORE')
         except Exception as e:
             print(f"     Failed {path.name}: {e}")
             results.append(file_result(path.name, False, f'error: {e}'))
@@ -561,10 +625,10 @@ def cost_to_sql(conn, source):
 
 
 
-def load_to_sql(conn, table, df):
+def load_to_sql(conn, table, df, conflict='IGNORE'):
     cur = conn.cursor()
     columns = [c.lower() for c in df.columns]
-    sql = f"INSERT OR IGNORE INTO {table} ({','.join(columns)}) VALUES ({"?,"*(len(columns)-1) + "?" })"
+    sql = f"INSERT OR {conflict} INTO {table} ({','.join(columns)}) VALUES ({"?,"*(len(columns)-1) + "?" })"
     before = conn.total_changes
     cur.executemany(sql, df.itertuples(index=False, name=None))
     conn.commit()
